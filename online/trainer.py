@@ -43,7 +43,7 @@ class EvalEpisodeResult:
 
 @attrs.define(kw_only=True)
 class InteractionConf:
-    total_env_steps: int = attrs.field(default=int(1e6), validator=attrs.validators.gt(0))
+    total_env_steps: int = attrs.field(default=int(15000), validator=attrs.validators.gt(0))
 
     num_prefill_episodes: int = attrs.field(default=200, validator=attrs.validators.ge(0))
     num_samples_per_cycle: int = attrs.field(default=500, validator=attrs.validators.ge(0))

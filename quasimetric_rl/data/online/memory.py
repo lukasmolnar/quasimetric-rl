@@ -244,7 +244,9 @@ class ReplayBuffer(Dataset):
             goal: torch.Tensor = torch.as_tensor(observation_dict['desired_goal'])
             agoal: torch.Tensor = torch.as_tensor(observation_dict['achieved_goal'])
 
-            is_success: bool = info['is_success']
+            # TODO[lm]: Look into whether we need is_success for new envs (info doesn't exist)
+            # is_success: bool = info['is_success']
+            is_success = False
 
             epi.all_observations[t + 1] = observation
             epi.actions[t] = torch.as_tensor(action)
@@ -254,7 +256,9 @@ class ReplayBuffer(Dataset):
             epi.observation_infos['achieved_goals'][t + 1] = agoal
 
             t += 1
-            timeout = info.get('TimeLimit.truncated', False)
+            # TODO[lm]: Look into whether timeout is necessary for new envs
+            # timeout = info.get('TimeLimit.truncated', False)]
+            timeout = t == self.episode_length
             assert (timeout or terminal) == (t == self.episode_length)
         return epi
 
