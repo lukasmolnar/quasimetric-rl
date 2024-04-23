@@ -248,8 +248,17 @@ class ReplayBuffer(Dataset):
             if 'is_success' in info:
                 is_success = info['is_success']
             else:
-                dist_to_goal = torch.norm(agoal - goal)
-                is_success = dist_to_goal < 0.05
+                # dist_to_goal = torch.norm(agoal - goal)
+                # is_success = dist_to_goal < 0.01
+
+                if 'Pendulum' in env.spec.id:
+                    # pendulum goal pos is 2D
+                    dist_to_goal_pos = torch.norm(agoal[:2] - goal[:2])
+                    is_success = dist_to_goal_pos < 0.01
+                elif 'MountainCar' in env.spec.id:
+                    # mountain car goal pos is 1D
+                    dist_to_goal_pos = torch.norm(agoal[:1] - goal[:1])
+                    is_success = dist_to_goal_pos < 0.01
 
             epi.all_observations[t + 1] = observation
             epi.actions[t] = torch.as_tensor(action)

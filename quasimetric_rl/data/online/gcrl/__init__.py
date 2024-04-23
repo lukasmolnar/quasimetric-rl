@@ -93,11 +93,13 @@ valid_names = (
     'FetchPush',
     'FetchPushImage',
     'FetchSlide',
+    'MountainCar-v0',
     'MountainCarContinuous-v0',
     'Pendulum-v0'
 )
 
 fixed_goals = {
+    'MountainCar-v0': np.array([0.45, 0.0]),
     'MountainCarContinuous-v0': np.array([0.45, 0.0]),
     'Pendulum-v0': np.array([1.0, 0.0, 0.0]),
 }
