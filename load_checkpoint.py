@@ -8,7 +8,8 @@ from quasimetric_rl.data import Dataset
 from quasimetric_rl.modules import QRLAgent, QRLConf
 
 EPISODE_LENGTH = 1000
-CHECKPOINT = './online/results/gcrl_MountainCarContinuous-v0/run_1/checkpoint_env00015000_opt00005500_final.pth'
+# CHECKPOINT = './online/results/gcrl_Pendulum-v0/goal_dist_0.01_1_long/checkpoint_env00100000_opt00090500_final.pth'
+CHECKPOINT = './online/results/gcrl_MountainCar-v0/run/checkpoint_env00020000_opt00010500_final.pth'
 
 checkpoint_dir = os.path.dirname(CHECKPOINT)
 with open(checkpoint_dir + '/config.yaml', 'r') as f:
@@ -41,6 +42,7 @@ done = False
 while not done:
     obs = torch.tensor(obs_dict['observation'])
     goal = torch.tensor(obs_dict['desired_goal'])
+    # TODO: How do we act for novelty
     dist = agent.actor(obs, goal)
     action = dist.sample()
     obs_dict, reward, terminal, info = env.step(np.asarray(action))

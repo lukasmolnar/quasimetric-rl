@@ -2,4 +2,9 @@
 
 # default args are already for the online GCRL setting
 
-exec python -m online.main env.kind=gcrl "${@}"
+args=(
+    env.kind=gcrl
+    agent.actor=null
+)
+
+exec python -m online.main "${args[@]}" "${@}"

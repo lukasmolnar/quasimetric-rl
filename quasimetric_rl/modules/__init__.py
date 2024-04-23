@@ -47,6 +47,7 @@ class QRLLosses(Module):
             loss_results[f"critic_{idx:02d}"] = critic_loss(data, critic_batch_info, optimize=optimize)
 
         if self.actor_loss is not None:
+            # TODO: maybe change actor
             loss_results['actor'] = self.actor_loss(agent.actor, critic_batch_infos, data, optimize=optimize)
 
         return LossResult.combine(loss_results)

@@ -13,7 +13,7 @@ import gym.spaces
 from quasimetric_rl.data.env_spec import EnvSpec
 
 from .. import EnvSpec
-from .utils import TensorCollectionAttrsMixin
+from ..utils import TensorCollectionAttrsMixin
 from ..base import (
     EpisodeData, MultiEpisodeData, Dataset, BatchData,
     register_offline_env,
@@ -95,20 +95,22 @@ def register_online_env(kind: str, spec: str, *,
 class LatentCollection(TensorCollectionAttrsMixin):  # TensorCollectionAttrsMixin has some util methods
     states: torch.Tensor
     latent: torch.Tensor
+    device: torch.device
     # TODO: Maybe do a distilled version of the novel states 
 
-    def __init__(self):
+    def __init__(self, device: torch.device):
         super().__init__()
-        self.states = torch.empty(0)
-        self.latent = torch.empty(0)
+        self.states = torch.empty(0).to(device)
+        self.latent = torch.empty(0).to(device)
+        self.device = device
 
     def add_state(self, state: torch.Tensor, latent: torch.Tensor):
-        self.states = torch.cat([self.states, state], dim=0)
-        self.latent = torch.cat([self.latent, latent], dim=0)
+        self.states = torch.cat([self.states, state.to(self.device)], dim=0)
+        self.latent = torch.cat([self.latent, latent.to(self.device)], dim=0)
 
     def add_rollout(self, episode: EpisodeData, critic: Collection[quasimetric_critic.QuasimetricCritic]):
         for state in episode.all_observations:
-            latent = critic.encoder(state)
+            latent = critic.encoder(state.to(self.device))
             self.add_state(state, latent)
 
 
