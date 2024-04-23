@@ -13,11 +13,13 @@ import gym.spaces
 from quasimetric_rl.data.env_spec import EnvSpec
 
 from .. import EnvSpec
+from .utils import TensorCollectionAttrsMixin
 from ..base import (
     EpisodeData, MultiEpisodeData, Dataset, BatchData,
     register_offline_env,
 )
 from .utils import get_empty_episode, get_empty_episodes
+from ...modules import quasimetric_critic
 
 
 #-----------------------------------------------------------------------------#
@@ -87,6 +89,29 @@ def register_online_env(kind: str, spec: str, *,
         kind, spec,
         load_episodes_fn=load_episodes_fn,
         create_env_fn=lambda: FixedLengthEnvWrapper(create_env_fn(), episode_length))
+    
+
+
+class LatentCollection(TensorCollectionAttrsMixin):  # TensorCollectionAttrsMixin has some util methods
+    states: torch.Tensor
+    latent: torch.Tensor
+    # TODO: Maybe do a distilled version of the novel states 
+
+    def __init__(self):
+        super().__init__()
+        self.states = torch.empty(0)
+        self.latent = torch.empty(0)
+
+    def add_state(self, state: torch.Tensor, latent: torch.Tensor):
+        self.states = torch.cat([self.states, state], dim=0)
+        self.latent = torch.cat([self.latent, latent], dim=0)
+
+    def add_rollout(self, episode: EpisodeData, critic: Collection[quasimetric_critic.QuasimetricCritic]):
+        for state in episode.all_observations:
+            latent = critic.encoder(state)
+            self.add_state(state, latent)
+
+
 
 
 class ReplayBuffer(Dataset):

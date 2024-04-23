@@ -13,7 +13,7 @@ import torch.utils.data
 
 from quasimetric_rl.modules import QRLConf, QRLAgent, QRLLosses, InfoT
 from quasimetric_rl.data import BatchData, EpisodeData, MultiEpisodeData
-from quasimetric_rl.data.online import ReplayBuffer, FixedLengthEnvWrapper
+from quasimetric_rl.data.online import ReplayBuffer, FixedLengthEnvWrapper, LatentCollection
 from quasimetric_rl.utils import tqdm
 
 
@@ -59,6 +59,7 @@ class Trainer(object):
     device: torch.device
     replay: ReplayBuffer
     batch_size: int
+    latent_collection: LatentCollection
 
     total_env_steps: int
 
@@ -132,6 +133,52 @@ class Trainer(object):
             self.replay.add_rollout(rollout)
         return rollout
 
+    def collect_novel_rollout(self, *, eval: bool = False, store: bool = True,
+                        env: Optional[FixedLengthEnvWrapper] = None) -> EpisodeData:
+        assert self.agent.actor is not None
+
+        @torch.no_grad()
+        def actor(obs: torch.Tensor, goal: torch.Tensor, space: gym.spaces.Space):
+            with self.agent.mode(False):
+                adistn = self.agent.actor(obs[None].to(self.device), goal[None].to(self.device)) # QRLAgent(actor=actor, critics=critics)
+            if eval:
+                # whatever the correct way to get the mode is
+                a = adistn.mode.cpu().numpy()[0]
+            else:
+                def one_hot_encode(action, num_actions):
+                    # Create a zero vector of length num_actions
+                    one_hot = np.zeros(num_actions)
+                    # Set the action index to 1
+                    one_hot[action] = 1
+                    return one_hot
+                
+                def novelty(nexts_state):
+                    # calculate based on latent_collection
+                    pass
+                
+                action_novelty = {}
+                # Iterate over all possible actions
+                for action in range(adistn.input_size): # adistn.input_size should be the number of actions
+                    one_hot_action = one_hot_encode(action, adistn.input_size)
+                    # Get the latent representation of the next state given the current state and the one-hot encoded action
+                    next_state = self.agent.critic(obs[None].to(self.device), goal[None].to(self.device), torch.tensor(one_hot_action).to(self.device))
+                    # Calculate the novelty of the next state
+                    novelty = novelty(next_state)
+                    # Store the novelty of the next state with the action
+                    action_novelty[action] = novelty
+
+                # Get the action with the highest novelty
+                a = max(action_novelty, key=action_novelty.get)
+
+            return a
+
+        rollout = self.replay.collect_rollout(actor, env=env)
+        if store:
+            self.replay.add_rollout(rollout)
+            # store the novelty of the next state
+            self.latent_collection.add_rollout(rollout, self.agent.critic)
+        return rollout
+
     def collect_rollout(self, *, eval: bool = False, store: bool = True,
                         env: Optional[FixedLengthEnvWrapper] = None) -> EpisodeData:
         assert self.agent.actor is not None
@@ -170,6 +217,10 @@ class Trainer(object):
                 self.num_eval_episodes, env.episode_length,
             ),
         )
+    
+    def novelty_update(self):
+        # TODO: For all states in latent_collection, recalculate the novelty of the next state
+        pass
 
     def iter_training_data(self) -> Iterator[Tuple[int, bool, BatchData, InfoT]]:
         r"""
@@ -211,6 +262,8 @@ class Trainer(object):
             env = self.make_collect_env()
             for _ in range(self.num_rollouts_per_cycle):
                 self.collect_rollout(env=env)
+
+                # TODO: This is where we change the training data to be novel
 
                 if self.replay.num_transitions_realized >= total_env_steps:
                     break

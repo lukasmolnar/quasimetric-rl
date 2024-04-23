@@ -39,6 +39,7 @@ class Conf(BaseConf):
     log_steps: int = attrs.field(default=250, validator=attrs.validators.gt(0))
     eval_steps: int = attrs.field(default=2000, validator=attrs.validators.gt(0))
     save_steps: int = attrs.field(default=50000, validator=attrs.validators.gt(0))
+    novel_steps: int = attrs.field(default=1000, validator=attrs.validators.gt(0))
 
 
 
@@ -137,6 +138,7 @@ def train(dict_cfg: DictConfig):
             log=cfg.log_steps,
             save=cfg.save_steps,
             eval=cfg.eval_steps,
+            novel=cfg.novel_steps,
         ),
     )
 
@@ -167,6 +169,9 @@ def train(dict_cfg: DictConfig):
 
         if step_counter.alerts.save:
             save(env_steps, optim_steps)
+
+        if step_counter.alerts.novel:
+            trainer.novelty_update()
 
         if step_counter.alerts.log:
             log_tensorboard(env_steps, data_info, 'data/')
