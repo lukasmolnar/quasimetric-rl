@@ -43,7 +43,7 @@ class EvalEpisodeResult:
 
 @attrs.define(kw_only=True)
 class InteractionConf:
-    total_env_steps: int = attrs.field(default=int(20000), validator=attrs.validators.gt(0))
+    total_env_steps: int = attrs.field(default=int(30000), validator=attrs.validators.gt(0))
 
     num_prefill_episodes: int = attrs.field(default=200, validator=attrs.validators.ge(0))
     num_samples_per_cycle: int = attrs.field(default=500, validator=attrs.validators.ge(0))
@@ -148,28 +148,26 @@ class Trainer(object):
                 one_hot[action] = 1
                 return one_hot
             
-            def novelty(next_state):
-                # TODO: calculate based on latent_collection
-                return 0
-            
             action_novelty = {}
             num_actions = env.action_space.n
             # Iterate over all possible actions
-            for action in range(num_actions): # adistn.input_size should be the number of actions
-                one_hot_action = one_hot_encode(action, num_actions)
-                # Get the latent representation of the next state given the current state and the one-hot encoded action
-                critic_0 = self.agent.critics[0]
-                latent_state = critic_0.encoder(obs[None].to(self.device))
-                next_state = critic_0.latent_dynamics(latent_state, torch.tensor(one_hot_action, dtype=int).to(self.device))
-                # Calculate the novelty of the next state
-                nov = novelty(next_state)
+            actions = torch.tensor([0, 1, 2]).to(self.device)
+            # Get the latent representation of the next state given the current state and the one-hot encoded action
+            critic_0 = self.agent.critics[0]
+            latent_state = critic_0.encoder(obs[None].to(self.device))
+            next_latent_states = critic_0.latent_dynamics(latent_state, actions)
+            # Calculate the novelty of the next state
+            for i in range(3):
+                a = actions[i]
+                next_state = next_latent_states[i,:]
+                nov = self.latent_collection.novelty(next_state)
                 # Store the novelty of the next state with the action
-                action_novelty[action] = nov
+                action_novelty[a] = nov
 
             # Get the action with the highest novelty
-            a = max(action_novelty, key=action_novelty.get)
+            a_novel = max(action_novelty, key=action_novelty.get)
 
-            return a
+            return a_novel.cpu()
 
         rollout = self.replay.collect_rollout(actor, env=env)
         if store:

@@ -96,24 +96,31 @@ class LatentCollection(TensorCollectionAttrsMixin):  # TensorCollectionAttrsMixi
     states: torch.Tensor
     latent: torch.Tensor
     device: torch.device
+    k: int = 10
     # TODO: Maybe do a distilled version of the novel states 
 
     def __init__(self, device: torch.device):
         super().__init__()
-        self.states = torch.empty(0).to(device)
-        self.latent = torch.empty(0).to(device)
+        self.states = torch.empty((0,)).to(device)
+        self.latent = torch.empty((0,)).to(device)
         self.device = device
 
     def add_state(self, state: torch.Tensor, latent: torch.Tensor):
-        self.states = torch.cat([self.states, state.to(self.device)], dim=0)
-        self.latent = torch.cat([self.latent, latent.to(self.device)], dim=0)
+        # TODO: refactor
+        self.states = torch.cat((self.states.reshape(-1,2), state.unsqueeze(0).to(self.device)), dim=0)
+        self.latent = torch.cat((self.latent.reshape(-1,128), latent.unsqueeze(0).to(self.device)), dim=0)
 
     def add_rollout(self, episode: EpisodeData, critic: Collection[quasimetric_critic.QuasimetricCritic]):
         for state in episode.all_observations:
             latent = critic.encoder(state.to(self.device))
             self.add_state(state, latent)
 
-
+    def novelty(self, new_latent_state: torch.Tensor):
+        if self.latent.shape[0] < self.k:
+            return 0
+        new_copied = new_latent_state.repeat(self.latent.shape[0], 1)
+        dist = torch.norm(self.latent - new_copied, dim=1)
+        return dist.topk(self.k, largest=False).values.mean()
 
 
 class ReplayBuffer(Dataset):
