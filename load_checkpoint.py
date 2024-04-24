@@ -7,9 +7,10 @@ import numpy as np
 from quasimetric_rl.data import Dataset
 from quasimetric_rl.modules import QRLAgent, QRLConf
 
+NOVEL = True
 EPISODE_LENGTH = 1000
 # CHECKPOINT = './online/results/gcrl_Pendulum-v0/goal_dist_0.01_1_long/checkpoint_env00100000_opt00090500_final.pth'
-CHECKPOINT = './online/results/gcrl_MountainCar-v0/run/checkpoint_env00020000_opt00010500_final.pth'
+CHECKPOINT = './online/results/gcrl_MountainCar-v0/run_novel_2/checkpoint_env00030000_opt00020500_final.pth'
 
 checkpoint_dir = os.path.dirname(CHECKPOINT)
 with open(checkpoint_dir + '/config.yaml', 'r') as f:
@@ -43,8 +44,33 @@ while not done:
     obs = torch.tensor(obs_dict['observation'])
     goal = torch.tensor(obs_dict['desired_goal'])
     # TODO: How do we act for novelty
-    dist = agent.actor(obs, goal)
-    action = dist.sample()
+    if NOVEL:
+        critic_0 = agent.critics[0]
+        latent_goal = critic_0.encoder(goal)
+
+        dist_to_goal = np.inf
+        best_action = None
+        num_actions = env.action_space.n
+        # Iterate over all possible actions
+        actions = torch.tensor([0, 1, 2])
+        # Get the latent representation of the next state given the current state and the one-hot encoded action
+        latent_state = critic_0.encoder(obs)
+        next_latent_states = critic_0.latent_dynamics(latent_state, actions)
+        print("Distances of next states:")
+        for i in range(3):
+            a = actions[i]
+            next_state = next_latent_states[i,:]
+            d = critic_0.quasimetric_model(next_state, latent_goal)
+            print(f'Action {a} has distance {d}')
+            if d < dist_to_goal:
+                dist_to_goal = d
+                best_action = a
+        print(best_action)
+        action = best_action
+    else:
+        dist = agent.actor(obs, goal)
+        action = dist.sample()
+
     obs_dict, reward, terminal, info = env.step(np.asarray(action))
     env.render()
     if done:
