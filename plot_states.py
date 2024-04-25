@@ -1,9 +1,14 @@
 import torch
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+# import imageio
+import imageio.v2 as imageio
+import numpy as np
+import os
+from tqdm import tqdm
 
 MOVIE = False
-PATH = './online/results/gcrl_MountainCar-v0/run_random_20k/visited_states.pth'
+PATH = './online/results/gcrl_MountainCar-v0/run_5_random/visited_states.pth'
 
 # Load the tensor from a file
 visited_states = torch.load(PATH)
@@ -39,3 +44,27 @@ else:
     scat.set_offsets(visited_states_np)
 
 plt.show()
+plt.close()
+
+# 5. How to create a gif
+images = []
+for i in tqdm(range(0, len(visited_states_np), int(len(visited_states_np)/200))):
+    data = visited_states_np[:i, :]
+    fig, ax = plt.subplots()
+    scat = ax.scatter(data[:,0], data[:,1], s=5)
+    ax.set_title('Visited states')
+    ax.set_xlabel('Position')
+    ax.set_ylabel('Velocity')
+    ax.set_xlim(-1.2, 0.6)
+    ax.set_ylim(-0.07, 0.07)
+    ax.axvline(x=0.5, color='green')
+    ax.axvline(x=-0.5, color='gray')
+    ax.plot([-0.6, -0.4], [0, 0], color='red')
+    img_dir = PATH.replace('.pth', '_img/')
+    os.makedirs(img_dir, exist_ok=True)
+    img = img_dir + f'{i}.png'
+    plt.savefig(img)
+    images.append(imageio.imread(img))
+    plt.close()
+
+imageio.mimsave(PATH.replace('.pth', '.gif'), images, fps=30)
