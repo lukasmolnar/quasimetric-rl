@@ -10,7 +10,7 @@ from quasimetric_rl.modules import QRLAgent, QRLConf
 NOVEL = True
 EPISODE_LENGTH = 1000
 # CHECKPOINT = './online/results/gcrl_Pendulum-v0/goal_dist_0.01_1_long/checkpoint_env00100000_opt00090500_final.pth'
-CHECKPOINT = './tmp/checkpoint_env00030000_opt00020500_final.pth'
+CHECKPOINT = './online/results/gcrl_MountainCar-v0/run_3_novel/checkpoint_env00020000_opt00001950_final.pth'
 
 checkpoint_dir = os.path.dirname(CHECKPOINT)
 with open(checkpoint_dir + '/config.yaml', 'r') as f:
@@ -40,6 +40,11 @@ agent.load_state_dict(torch.load(CHECKPOINT, map_location='cpu')['agent'])
 # 4. Simulate
 obs_dict = env.reset()
 done = False
+
+# prepare to make a gif
+import imageio
+images = []
+
 while not done:
     obs = torch.tensor(obs_dict['observation'])
     goal = torch.tensor(obs_dict['desired_goal'])
@@ -73,5 +78,10 @@ while not done:
 
     obs_dict, reward, terminal, info = env.step(np.asarray(action))
     env.render()
+    images.append(env.render(mode='rgb_array'))
+    done = terminal
     if done:
         break
+
+env.close()
+imageio.mimsave(checkpoint_dir + '/test.gif', images, duration=0.5)
