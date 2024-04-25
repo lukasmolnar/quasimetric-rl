@@ -183,6 +183,9 @@ def train(dict_cfg: DictConfig):
     save(trainer.total_env_steps, optim_steps, suffix='final')
     open(cfg.completion_file, 'a').close()
 
+    # save all visited states
+    visited_states = trainer.latent_collection.states
+    torch.save(visited_states, os.path.join(cfg.output_dir, 'visited_states.pth'))
 
 if __name__ == '__main__':
     if 'MUJOCO_GL' not in os.environ:
