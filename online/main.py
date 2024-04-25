@@ -38,7 +38,7 @@ class Conf(BaseConf):
 
     log_steps: int = attrs.field(default=250, validator=attrs.validators.gt(0))
     eval_steps: int = attrs.field(default=2000, validator=attrs.validators.gt(0))
-    save_steps: int = attrs.field(default=50000, validator=attrs.validators.gt(0))
+    save_steps: int = attrs.field(default=1000, validator=attrs.validators.gt(0))
     novel_steps: int = attrs.field(default=1000, validator=attrs.validators.gt(0))
 
 

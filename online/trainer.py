@@ -45,12 +45,15 @@ class EvalEpisodeResult:
 class InteractionConf:
     total_env_steps: int = attrs.field(default=int(20000), validator=attrs.validators.gt(0))
 
-    num_prefill_episodes: int = attrs.field(default=200, validator=attrs.validators.ge(0))
-    num_samples_per_cycle: int = attrs.field(default=500, validator=attrs.validators.ge(0))
+    num_prefill_episodes: int = attrs.field(default=20, validator=attrs.validators.ge(0))
+    num_samples_per_cycle: int = attrs.field(default=50, validator=attrs.validators.ge(0))
     num_rollouts_per_cycle: int = attrs.field(default=10, validator=attrs.validators.ge(0))
-    num_eval_episodes: int = attrs.field(default=50, validator=attrs.validators.ge(0))
+    num_eval_episodes: int = attrs.field(default=10, validator=attrs.validators.ge(0))
 
     exploration_eps: float = attrs.field(default=0.3, validator=attrs.validators.ge(0))
+
+    novel: bool = attrs.field(default=True)
+    random: bool = attrs.field(default=False)
 
 
 class Trainer(object):
@@ -68,6 +71,9 @@ class Trainer(object):
     num_rollouts_per_cycle: int
     num_eval_episodes: int
     exploration_eps: float
+
+    novel: bool
+    random: bool
 
     def get_total_optim_steps(self, total_env_steps: int):
         total_env_steps -= self.replay.num_episodes_realized * self.replay.episode_length
@@ -92,6 +98,8 @@ class Trainer(object):
         self.eval_seed = eval_seed
         self.batch_size = batch_size
         self.latent_collection = LatentCollection(device=self.device)
+        self.novel = interaction_conf.novel
+        self.random = interaction_conf.random
 
         self.exploration_eps = interaction_conf.exploration_eps
         self.total_env_steps = interaction_conf.total_env_steps
@@ -262,9 +270,12 @@ class Trainer(object):
             env = self.make_collect_env()
             for _ in range(self.num_rollouts_per_cycle):
                 # TODO: This is where we change the training data to be novel
-                # self.collect_rollout(env=env)
-                self.collect_novel_rollout(env=env)
-
+                if self.novel:
+                    self.collect_novel_rollout(env=env)
+                elif self.random:
+                    self.collect_random_rollout(env=env)
+                else:
+                    self.collect_rollout(env=env)
                 if self.replay.num_transitions_realized >= total_env_steps:
                     break
 
