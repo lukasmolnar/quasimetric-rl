@@ -9,8 +9,8 @@ from quasimetric_rl.modules import QRLAgent, QRLConf
 
 NOVEL = True
 EPISODE_LENGTH = 1000
-# CHECKPOINT = './online/results/gcrl_Pendulum-v0/goal_dist_0.01_1_long/checkpoint_env00100000_opt00090500_final.pth'
-CHECKPOINT = './online/results/gcrl_MountainCar-v0/run_3_novel/checkpoint_env00020000_opt00001950_final.pth'
+CHECKPOINT = './online/results/gcrl_CartPole-v1/run_novel_20k/checkpoint_env00020000_opt00001950_final.pth'
+# CHECKPOINT = './tmp/checkpoint_env00030000_opt00020500_final.pth'
 
 checkpoint_dir = os.path.dirname(CHECKPOINT)
 with open(checkpoint_dir + '/config.yaml', 'r') as f:
@@ -57,12 +57,12 @@ while not done:
         best_action = None
         num_actions = env.action_space.n
         # Iterate over all possible actions
-        actions = torch.tensor([0, 1, 2])
+        actions = torch.tensor([i for i in range(num_actions)])
         # Get the latent representation of the next state given the current state and the one-hot encoded action
         latent_state = critic_0.encoder(obs)
         next_latent_states = critic_0.latent_dynamics(latent_state, actions)
         print("Distances of next states:")
-        for i in range(3):
+        for i in range(num_actions):
             a = actions[i]
             next_state = next_latent_states[i,:]
             d = critic_0.quasimetric_model(next_state, latent_goal)

@@ -7,12 +7,16 @@ import numpy as np
 import os
 from tqdm import tqdm
 
-MOVIE = False
-PATH = './online/results/gcrl_MountainCar-v0/run_5_random/visited_states.pth'
+MOVIE = True
+PATH = './online/results/gcrl_CartPole-v1/run_novel_20k/visited_states.pth'
 
 # Load the tensor from a file
 visited_states = torch.load(PATH)
 visited_states_np = visited_states.cpu().numpy()
+
+if 'CartPole' in PATH:
+    # Only plot pole angle and angular velocity
+    visited_states_np = visited_states_np[:, 2:]
 
 # Initialize scatter plot
 fig, ax = plt.subplots()
@@ -21,13 +25,15 @@ scat = ax.scatter([], [], s=5)
 ax.set_title('Visited states')
 ax.set_xlabel('Position')
 ax.set_ylabel('Velocity')
-ax.set_xlim(-1.2, 0.6)
-ax.set_ylim(-0.07, 0.07)
 
-# Mark initial states and goal state
-ax.axvline(x=0.5, color='green')
-ax.axvline(x=-0.5, color='gray')
-ax.plot([-0.6, -0.4], [0, 0], color='red')
+if 'MountainCar' in PATH:
+    ax.set_xlim(-1.2, 0.6)
+    ax.set_ylim(-0.07, 0.07)
+
+    # Mark initial states and goal state
+    ax.axvline(x=0.5, color='green')
+    ax.axvline(x=-0.5, color='gray')
+    ax.plot([-0.6, -0.4], [0, 0], color='red')
 
 
 if MOVIE:

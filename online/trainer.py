@@ -45,10 +45,10 @@ class EvalEpisodeResult:
 class InteractionConf:
     total_env_steps: int = attrs.field(default=int(20000), validator=attrs.validators.gt(0))
 
-    num_prefill_episodes: int = attrs.field(default=20, validator=attrs.validators.ge(0))
-    num_samples_per_cycle: int = attrs.field(default=50, validator=attrs.validators.ge(0))
+    num_prefill_episodes: int = attrs.field(default=200, validator=attrs.validators.ge(0))
+    num_samples_per_cycle: int = attrs.field(default=500, validator=attrs.validators.ge(0))
     num_rollouts_per_cycle: int = attrs.field(default=10, validator=attrs.validators.ge(0))
-    num_eval_episodes: int = attrs.field(default=10, validator=attrs.validators.ge(0))
+    num_eval_episodes: int = attrs.field(default=50, validator=attrs.validators.ge(0))
 
     exploration_eps: float = attrs.field(default=0.3, validator=attrs.validators.ge(0))
 
@@ -160,13 +160,13 @@ class Trainer(object):
             action_novelty = {}
             num_actions = env.action_space.n
             # Iterate over all possible actions
-            actions = torch.tensor([0, 1, 2]).to(self.device)
+            actions = torch.tensor([i for i in range(num_actions)]).to(self.device)
             # Get the latent representation of the next state given the current state and the one-hot encoded action
             critic_0 = self.agent.critics[0]
             latent_state = critic_0.encoder(obs[None].to(self.device))
             next_latent_states = critic_0.latent_dynamics(latent_state, actions)
             # Calculate the novelty of the next state
-            for i in range(3):
+            for i in range(num_actions):
                 a = actions[i]
                 next_state = next_latent_states[i,:]
                 nov = self.latent_collection.novelty(next_state)
