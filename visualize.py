@@ -12,11 +12,13 @@ from quasimetric_rl.modules import QRLAgent, QRLConf
 
 NOVEL = True
 EPISODE_LENGTH = 1000
-CHECKPOINT_DIR = './online/results/gcrl_MountainCar-v0/run_3/'
+CHECKPOINT_DIR = './online/results/gcrl_MountainCar-v0/run_5_novel/'
 CHECKPOINT = 'checkpoint_env00100000_opt00090500_final.pth'
 
 # find all .pth files in the directory
 checkpoints = [f for f in os.listdir(CHECKPOINT_DIR) if f.endswith('.pth')]
+# filter out the checkpoint
+checkpoints = [f for f in checkpoints if 'checkpoint' in f]
 
 # sort the checkpoints by the number of steps
 checkpoints.sort(key=lambda x: int(x.split('_')[1][3:]))
@@ -83,6 +85,9 @@ for checkpoint in checkpoints:
     ax.scatter(grid[:,0], grid[:,1], c=colors)
     plt.colorbar(sm)
     n = int(checkpoint.split('_')[1][3:])
+    plt.title(f'Checkpoint {n}')
+    plt.xlabel('Position')
+    plt.ylabel('Velocity')
     plt.savefig(dir + f'{n}_1.png')
     plt.close()
 
@@ -96,7 +101,11 @@ for checkpoint in checkpoints:
     ax.scatter(grid[:,0], grid[:,1], c=colors)
     plt.colorbar(sm)
     n = int(checkpoint.split('_')[1][3:])
+    plt.title(f'Checkpoint {n}')
+    plt.xlabel('Position')
+    plt.ylabel('Velocity')
     plt.savefig(dir + f'{n}_log.png')
+    plt.close()
 
 # now generate a gif
 import imageio
