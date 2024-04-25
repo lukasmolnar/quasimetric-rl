@@ -48,7 +48,7 @@ class InteractionConf:
     num_prefill_episodes: int = attrs.field(default=200, validator=attrs.validators.ge(0))
     num_samples_per_cycle: int = attrs.field(default=500, validator=attrs.validators.ge(0))
     num_rollouts_per_cycle: int = attrs.field(default=10, validator=attrs.validators.ge(0))
-    num_eval_episodes: int = attrs.field(default==50, validator=attrs.validators.ge(0))
+    num_eval_episodes: int = attrs.field(default=50, validator=attrs.validators.ge(0))
 
     exploration_eps: float = attrs.field(default=0.3, validator=attrs.validators.ge(0))
 
