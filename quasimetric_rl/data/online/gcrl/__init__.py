@@ -95,13 +95,15 @@ valid_names = (
     'FetchSlide',
     'MountainCar-v0',
     'MountainCarContinuous-v0',
-    'Pendulum-v0'
+    'Pendulum-v0',
+    'CartPole-v1'
 )
 
 fixed_goals = {
     'MountainCar-v0': np.array([0.5, 0.0]), # Discrete mountain car (different goal to continuous)
     'MountainCarContinuous-v0': np.array([0.45, 0.0]),
     'Pendulum-v0': np.array([1.0, 0.0, 0.0]),
+    'CartPole-v1': np.array([0.0, 0.0, 0.0, 0.0])
 }
 
 for name in valid_names:

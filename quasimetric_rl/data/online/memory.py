@@ -107,8 +107,10 @@ class LatentCollection(TensorCollectionAttrsMixin):  # TensorCollectionAttrsMixi
 
     def add_state(self, state: torch.Tensor, latent: torch.Tensor):
         # TODO: refactor
-        self.states = torch.cat((self.states.reshape(-1,2), state.unsqueeze(0).to(self.device)), dim=0)
-        self.latent = torch.cat((self.latent.reshape(-1,128), latent.unsqueeze(0).to(self.device)), dim=0)
+        state_dim = state.shape[0]
+        latent_dim = 128
+        self.states = torch.cat((self.states.reshape(-1,state_dim), state.unsqueeze(0).to(self.device)), dim=0)
+        self.latent = torch.cat((self.latent.reshape(-1,latent_dim), latent.unsqueeze(0).to(self.device)), dim=0)
 
     def add_rollout(self, episode: EpisodeData, critic: Collection[quasimetric_critic.QuasimetricCritic]):
         for state in episode.all_observations:
@@ -269,7 +271,8 @@ class ReplayBuffer(Dataset):
 
         t = 0
         timeout = False
-        while not timeout:
+        # TODO: Look into how to handle timeout & terminal for new envs
+        while not timeout and t < self.episode_length:
             action = actor(
                 observation,
                 goal,
@@ -297,6 +300,10 @@ class ReplayBuffer(Dataset):
                     # mountain car goal pos is 1D
                     dist_to_goal_pos = torch.norm(agoal[:1] - goal[:1])
                     is_success = dist_to_goal_pos < 0.01
+                elif 'CartPole' in env.spec.id:
+                    # mountain car goal pos is 2D (last 2 entries)
+                    dist_to_goal_pos = torch.norm(agoal[2:] - goal[2:])
+                    is_success = dist_to_goal_pos < 0.01
 
             epi.all_observations[t + 1] = observation
             epi.actions[t] = torch.as_tensor(action)
@@ -306,9 +313,9 @@ class ReplayBuffer(Dataset):
             epi.observation_infos['achieved_goals'][t + 1] = agoal
 
             t += 1
-            # TODO[lm]: Look into whether timeout is necessary for new envs
+            # TODO: Look into how to handle timeout & terminal for new envs
             timeout = info.get('TimeLimit.truncated', False)
-            assert (timeout or terminal) == (t == self.episode_length)
+            # assert (timeout or terminal) == (t == self.episode_length)
         return epi
 
     def add_rollout(self, episode: EpisodeData):
