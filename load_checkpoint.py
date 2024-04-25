@@ -10,7 +10,7 @@ from quasimetric_rl.modules import QRLAgent, QRLConf
 NOVEL = True
 EPISODE_LENGTH = 1000
 # CHECKPOINT = './online/results/gcrl_Pendulum-v0/goal_dist_0.01_1_long/checkpoint_env00100000_opt00090500_final.pth'
-CHECKPOINT = './online/results/gcrl_MountainCar-v0/run_novel_2/checkpoint_env00030000_opt00020500_final.pth'
+CHECKPOINT = './tmp/checkpoint_env00030000_opt00020500_final.pth'
 
 checkpoint_dir = os.path.dirname(CHECKPOINT)
 with open(checkpoint_dir + '/config.yaml', 'r') as f:
