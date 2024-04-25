@@ -43,7 +43,7 @@ class EvalEpisodeResult:
 
 @attrs.define(kw_only=True)
 class InteractionConf:
-    total_env_steps: int = attrs.field(default=int(30000), validator=attrs.validators.gt(0))
+    total_env_steps: int = attrs.field(default=int(20000), validator=attrs.validators.gt(0))
 
     num_prefill_episodes: int = attrs.field(default=200, validator=attrs.validators.ge(0))
     num_samples_per_cycle: int = attrs.field(default=500, validator=attrs.validators.ge(0))
@@ -219,8 +219,8 @@ class Trainer(object):
         )
     
     def novelty_update(self):
-        # TODO: For all states in latent_collection, recalculate the novelty of the next state
-        pass
+        # TODO: how do we handle the 2 critics?
+        self.latent_collection.update(self.agent.critics[0])
 
     def iter_training_data(self) -> Iterator[Tuple[int, bool, BatchData, InfoT]]:
         r"""

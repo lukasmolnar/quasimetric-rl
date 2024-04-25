@@ -121,6 +121,10 @@ class LatentCollection(TensorCollectionAttrsMixin):  # TensorCollectionAttrsMixi
         new_copied = new_latent_state.repeat(self.latent.shape[0], 1)
         dist = torch.norm(self.latent - new_copied, dim=1)
         return dist.topk(self.k, largest=False).values.mean()
+    
+    def update(self, critic: quasimetric_critic.QuasimetricCritic):
+        for i in range(self.states.shape[0]):
+            self.latent[i] = critic.encoder(self.states[i].to(self.device))
 
 
 class ReplayBuffer(Dataset):

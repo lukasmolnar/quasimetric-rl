@@ -99,7 +99,7 @@ valid_names = (
 )
 
 fixed_goals = {
-    'MountainCar-v0': np.array([0.45, 0.0]),
+    'MountainCar-v0': np.array([0.5, 0.0]), # Discrete mountain car (different goal to continuous)
     'MountainCarContinuous-v0': np.array([0.45, 0.0]),
     'Pendulum-v0': np.array([1.0, 0.0, 0.0]),
 }
