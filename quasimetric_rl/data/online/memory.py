@@ -111,6 +111,12 @@ class LatentCollection(TensorCollectionAttrsMixin):  # TensorCollectionAttrsMixi
         self.latent = torch.cat((self.latent.reshape(-1,128), latent.unsqueeze(0).to(self.device)), dim=0)
 
     def add_rollout(self, episode: EpisodeData, critic: Collection[quasimetric_critic.QuasimetricCritic]):
+        if critic is None:
+            # latent like state with zeros
+            for state in episode.all_observations:
+                latent = torch.zeros(128)
+                self.add_state(state, latent)
+            return
         for state in episode.all_observations:
             latent = critic.encoder(state.to(self.device))
             self.add_state(state, latent)

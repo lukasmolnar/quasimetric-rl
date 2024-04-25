@@ -140,6 +140,7 @@ class Trainer(object):
         )
         if store:
             self.replay.add_rollout(rollout)
+            self.latent_collection.add_rollout(rollout, self.agent.critics[0])
         return rollout
 
     def collect_novel_rollout(self, *, eval: bool = False, store: bool = True,
@@ -207,6 +208,7 @@ class Trainer(object):
         rollout = self.replay.collect_rollout(actor, env=env)
         if store:
             self.replay.add_rollout(rollout)
+            self.latent_collection.add_rollout(rollout, self.agent.critics[0])
         return rollout
 
     def evaluate(self) -> EvalEpisodeResult:
@@ -214,8 +216,12 @@ class Trainer(object):
         rollouts = []
         for _ in tqdm(range(self.num_eval_episodes), desc='evaluate'):
             # TODO: How do we act during evaluation
-            # rollouts.append(self.collect_rollout(eval=True, store=False, env=env))
-            rollouts.append(self.collect_novel_rollout(eval=True, store=False, env=env))
+            if self.novel:
+                rollouts.append(self.collect_novel_rollout(eval=True, store=False, env=env))
+            elif self.random:
+                rollouts.append(self.collect_random_rollout(env=env))
+            else:
+                rollouts.append(self.collect_rollout(eval=True, store=False, env=env))
         mrollouts = MultiEpisodeData.cat(rollouts)
         return EvalEpisodeResult.from_timestep_reward_is_success(
             mrollouts.rewards.reshape(
