@@ -234,7 +234,12 @@ class Trainer(object):
     
     def novelty_update(self):
         # TODO: how do we handle the 2 critics?
+        print("******** novelty_update ********")
+        print("LatentCollection size: ", len(self.latent_collection.latent))
+        self.latent_collection.reduceCollection(mode = 'cluster_latents') # other options available
         self.latent_collection.update(self.agent.critics[0])
+        print("LatentCollection size: ", len(self.latent_collection.latent))
+
 
     def iter_training_data(self) -> Iterator[Tuple[int, bool, BatchData, InfoT]]:
         r"""

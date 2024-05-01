@@ -171,6 +171,8 @@ def train(dict_cfg: DictConfig):
             save(env_steps, optim_steps)
 
         if step_counter.alerts.novel:
+            torch.save(trainer.latent_collection.states, os.path.join(cfg.output_dir, 'visited_states' + str(env_steps) + '.pth'))
+            torch.save(trainer.latent_collection.latent, os.path.join(cfg.output_dir, 'visited_latents' + str(env_steps) + '.pth'))
             trainer.novelty_update()
 
         if step_counter.alerts.log:
@@ -185,7 +187,7 @@ def train(dict_cfg: DictConfig):
 
     # save all visited states
     visited_states = trainer.latent_collection.states
-    torch.save(visited_states, os.path.join(cfg.output_dir, 'visited_states.pth'))
+    torch.save(visited_states, os.path.join(cfg.output_dir, 'visited_states_final.pth'))
 
 if __name__ == '__main__':
     if 'MUJOCO_GL' not in os.environ:

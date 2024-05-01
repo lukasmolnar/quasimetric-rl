@@ -21,6 +21,7 @@ from ..base import (
 from .utils import get_empty_episode, get_empty_episodes
 from ...modules import quasimetric_critic
 
+from sklearn.cluster import KMeans, MiniBatchKMeans
 
 #-----------------------------------------------------------------------------#
 #------------------------------ replay buffer --------------------------------#
@@ -97,7 +98,7 @@ class LatentCollection(TensorCollectionAttrsMixin):  # TensorCollectionAttrsMixi
     latent: torch.Tensor
     device: torch.device
     k: int = 10
-    # TODO: Maybe do a distilled version of the novel states 
+    n: int = 2000
 
     def __init__(self, device: torch.device):
         super().__init__()
@@ -129,6 +130,32 @@ class LatentCollection(TensorCollectionAttrsMixin):  # TensorCollectionAttrsMixi
         new_copied = new_latent_state.repeat(self.latent.shape[0], 1)
         dist = torch.norm(self.latent - new_copied, dim=1)
         return dist.topk(self.k, largest=False).values.mean()
+    
+    def reduceCollection(self, mode = 'cluster latents'):
+        # downsample the collection to n states
+        if mode == 'downsample':
+            if self.latent.shape[0] > self.n:
+                indices = torch.randperm(self.latent.shape[0])[:self.n]
+                self.states = self.states[indices]
+                self.latent = self.latent[indices]
+        else:
+            # use k-means to reduce the collection
+            # WE ARE NOT USING GPUS HERE :(
+            if mode == 'cluster_states':
+                kmeans = KMeans(n_clusters=self.n, random_state=0, n_init='auto').fit(self.latent.detach().cpu().numpy())
+                # batchkmeans = MiniBatchKMeans(n_clusters=self.n, random_state=0, batch_size=1024).fit(self.latent.cpu().numpy())
+                distances = kmeans.transform(self.latent.detach().cpu().numpy())
+                closest_samples = np.argmin(distances, axis=0)
+                self.states = self.states[closest_samples]
+                self.latent = self.latent[closest_samples]
+            elif mode == 'cluster_latents':
+                kmeans = KMeans(n_clusters=self.n, random_state=0, n_init='auto').fit(self.states.detach().cpu().numpy())
+                self.states = torch.tensor(kmeans.cluster_centers_).to(self.device)
+                self.latent = torch.empty((self.n, self.latent.shape[1])).to(self.device)
+            else:
+                raise NotImplementedError(f"Mode {mode} not implemented")
+
+
     
     def update(self, critic: quasimetric_critic.QuasimetricCritic):
         for i in range(self.states.shape[0]):
