@@ -36,10 +36,10 @@ class Conf(BaseConf):
     batch_size: int = attrs.field(default=256, validator=attrs.validators.gt(0))
     interaction: InteractionConf = InteractionConf()
 
-    log_steps: int = attrs.field(default=10_000, validator=attrs.validators.gt(0))
-    eval_steps: int = attrs.field(default=4_000_000, validator=attrs.validators.gt(0))
-    save_steps: int = attrs.field(default=100_000, validator=attrs.validators.gt(0))
-    novel_steps: int = attrs.field(default=50_000, validator=attrs.validators.gt(0))
+    log_steps: int = attrs.field(default=50_000, validator=attrs.validators.gt(0))
+    eval_steps: int = attrs.field(default=100_000, validator=attrs.validators.gt(0))
+    save_steps: int = attrs.field(default=50_000, validator=attrs.validators.gt(0))
+    novel_steps: int = attrs.field(default=10_000, validator=attrs.validators.gt(0))
 
 
 
