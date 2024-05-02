@@ -8,8 +8,8 @@ import os
 from tqdm import tqdm
 
 GIF = True
-DIR = './online/results/gcrl_MountainCar-v0/run_novel_1M_downsample/'
-PATH = DIR + 'visited_states50000.pth'
+DIR = './online/results/gcrl_MountainCar-v0/run_novel_200k_downsample/'
+PATH = DIR + 'visited_states_final.pth'
 
 # Load the tensor from a file
 visited_states = torch.load(PATH)

@@ -97,8 +97,8 @@ class LatentCollection(TensorCollectionAttrsMixin):  # TensorCollectionAttrsMixi
     states: torch.Tensor
     latent: torch.Tensor
     device: torch.device
-    k: int = 50
-    n: int = 50_000
+    k: int = 20
+    n: int = 10_000
 
     def __init__(self, device: torch.device):
         super().__init__()
@@ -331,8 +331,10 @@ class ReplayBuffer(Dataset):
                     is_success = dist_to_goal_pos < 0.01
                 elif 'MountainCar' in env.spec.id:
                     # mountain car goal pos is 1D
-                    dist_to_goal_pos = torch.norm(agoal[:1] - goal[:1])
-                    is_success = dist_to_goal_pos < 0.01
+                    # TODO: maybe reconsider
+                    # dist_to_goal_pos = torch.norm(agoal[:1] - goal[:1])
+                    # is_success = dist_to_goal_pos < 0.01
+                    is_success = agoal[0] >= goal[0]
                 elif 'CartPole' in env.spec.id:
                     # mountain car goal pos is 2D (last 2 entries)
                     dist_to_goal_pos = torch.norm(agoal[2:] - goal[2:])
