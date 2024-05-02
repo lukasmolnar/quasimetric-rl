@@ -97,8 +97,8 @@ class LatentCollection(TensorCollectionAttrsMixin):  # TensorCollectionAttrsMixi
     states: torch.Tensor
     latent: torch.Tensor
     device: torch.device
-    k: int = 10
-    n: int = 2000
+    k: int = 50
+    n: int = 50_000
 
     def __init__(self, device: torch.device):
         super().__init__()
@@ -141,15 +141,15 @@ class LatentCollection(TensorCollectionAttrsMixin):  # TensorCollectionAttrsMixi
         else:
             # use k-means to reduce the collection
             # WE ARE NOT USING GPUS HERE :(
-            if mode == 'cluster_states':
-                kmeans = KMeans(n_clusters=self.n, random_state=0, n_init='auto').fit(self.latent.detach().cpu().numpy())
+            if mode == 'cluster_latents':
+                kmeans = KMeans(n_clusters=self.n, random_state=0).fit(self.latent.detach().cpu().numpy())
                 # batchkmeans = MiniBatchKMeans(n_clusters=self.n, random_state=0, batch_size=1024).fit(self.latent.cpu().numpy())
                 distances = kmeans.transform(self.latent.detach().cpu().numpy())
                 closest_samples = np.argmin(distances, axis=0)
                 self.states = self.states[closest_samples]
                 self.latent = self.latent[closest_samples]
-            elif mode == 'cluster_latents':
-                kmeans = KMeans(n_clusters=self.n, random_state=0, n_init='auto').fit(self.states.detach().cpu().numpy())
+            elif mode == 'cluster_states':
+                kmeans = KMeans(n_clusters=self.n, random_state=0).fit(self.states.detach().cpu().numpy())
                 self.states = torch.tensor(kmeans.cluster_centers_).to(self.device)
                 self.latent = torch.empty((self.n, self.latent.shape[1])).to(self.device)
             else:

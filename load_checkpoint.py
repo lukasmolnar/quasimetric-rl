@@ -9,7 +9,7 @@ from quasimetric_rl.modules import QRLAgent, QRLConf
 
 NOVEL = True
 EPISODE_LENGTH = 1000
-CHECKPOINT = './online/results/gcrl_CartPole-v1/run_novel_20k/checkpoint_env00020000_opt00001950_final.pth'
+CHECKPOINT = './online/results/gcrl_MountainCar-v0/run_novel_1M_downsample/checkpoint_env01000000_opt00049500.pth'
 # CHECKPOINT = './tmp/checkpoint_env00030000_opt00020500_final.pth'
 
 checkpoint_dir = os.path.dirname(CHECKPOINT)

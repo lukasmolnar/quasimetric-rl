@@ -36,10 +36,10 @@ class Conf(BaseConf):
     batch_size: int = attrs.field(default=256, validator=attrs.validators.gt(0))
     interaction: InteractionConf = InteractionConf()
 
-    log_steps: int = attrs.field(default=250, validator=attrs.validators.gt(0))
-    eval_steps: int = attrs.field(default=2000, validator=attrs.validators.gt(0))
-    save_steps: int = attrs.field(default=1000, validator=attrs.validators.gt(0))
-    novel_steps: int = attrs.field(default=1000, validator=attrs.validators.gt(0))
+    log_steps: int = attrs.field(default=10_000, validator=attrs.validators.gt(0))
+    eval_steps: int = attrs.field(default=4_000_000, validator=attrs.validators.gt(0))
+    save_steps: int = attrs.field(default=100_000, validator=attrs.validators.gt(0))
+    novel_steps: int = attrs.field(default=50_000, validator=attrs.validators.gt(0))
 
 
 
@@ -164,15 +164,15 @@ def train(dict_cfg: DictConfig):
             continue  # just train more, only eval/log/save right before new env step
         step_counter.update_to_then_record_alerts(env_steps)
 
-        if step_counter.alerts.eval:
-            eval(env_steps, optim_steps)
+        # if step_counter.alerts.eval:
+        #     eval(env_steps, optim_steps)
 
         if step_counter.alerts.save:
             save(env_steps, optim_steps)
 
         if step_counter.alerts.novel:
             torch.save(trainer.latent_collection.states, os.path.join(cfg.output_dir, 'visited_states' + str(env_steps) + '.pth'))
-            torch.save(trainer.latent_collection.latent, os.path.join(cfg.output_dir, 'visited_latents' + str(env_steps) + '.pth'))
+            # torch.save(trainer.latent_collection.latent, os.path.join(cfg.output_dir, 'visited_latents' + str(env_steps) + '.pth'))
             trainer.novelty_update()
 
         if step_counter.alerts.log:

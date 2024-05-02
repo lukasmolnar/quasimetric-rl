@@ -12,8 +12,8 @@ from quasimetric_rl.modules import QRLAgent, QRLConf
 
 NOVEL = True
 EPISODE_LENGTH = 1000
-CHECKPOINT_DIR = './online/results/gcrl_MountainCar-v0/run_5_novel/'
-CHECKPOINT = 'checkpoint_env00100000_opt00090500_final.pth'
+CHECKPOINT_DIR = './online/results/gcrl_MountainCar-v0/run_novel_1M_downsample/'
+CHECKPOINT = 'checkpoint_env01000000_opt00049500.pth'
 
 # find all .pth files in the directory
 checkpoints = [f for f in os.listdir(CHECKPOINT_DIR) if f.endswith('.pth')]

@@ -83,7 +83,7 @@ def create_env_from_spec(name: str):
         fixed_goal = None
         env: gym.Env = getattr(fetch_envs, name + 'Env')()
     
-    return GoalCondEnvWrapper(env, episode_length=50, fixed_goal=fixed_goal, 
+    return GoalCondEnvWrapper(env, episode_length=1000, fixed_goal=fixed_goal, 
                               is_image_based=is_image_based)
 
 
@@ -110,5 +110,5 @@ for name in valid_names:
     register_online_env(
         'gcrl', name,
         create_env_fn=functools.partial(create_env_from_spec, name),
-        episode_length=50,
+        episode_length=1000,
     )
