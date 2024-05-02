@@ -331,10 +331,8 @@ class ReplayBuffer(Dataset):
                     is_success = dist_to_goal_pos < 0.01
                 elif 'MountainCar' in env.spec.id:
                     # mountain car goal pos is 1D
-                    # TODO: maybe reconsider
-                    # dist_to_goal_pos = torch.norm(agoal[:1] - goal[:1])
-                    # is_success = dist_to_goal_pos < 0.01
-                    is_success = agoal[0] >= goal[0]
+                    dist_to_goal_pos = torch.norm(agoal[:1] - goal[:1])
+                    is_success = dist_to_goal_pos < 0.01
                 elif 'CartPole' in env.spec.id:
                     # mountain car goal pos is 2D (last 2 entries)
                     dist_to_goal_pos = torch.norm(agoal[2:] - goal[2:])
