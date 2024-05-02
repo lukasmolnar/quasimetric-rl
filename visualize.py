@@ -88,8 +88,11 @@ for checkpoint in checkpoints:
     plt.title(f'Checkpoint {n}')
     plt.xlabel('Position')
     plt.ylabel('Velocity')
-    plt.savefig(dir + f'{n}_1.png')
+    plt.savefig(dir + f'{n}_norm.png')
     plt.close()
+
+    # correct way of calculating the quasimetric distance with the model
+    distances = agent.critics[0].quasimetric_model(latent_grid, latent_goal_grid)
 
     # now visualize the log distances in a heatmap
     fig, ax = plt.subplots()
@@ -104,7 +107,7 @@ for checkpoint in checkpoints:
     plt.title(f'Checkpoint {n}')
     plt.xlabel('Position')
     plt.ylabel('Velocity')
-    plt.savefig(dir + f'{n}_log.png')
+    plt.savefig(dir + f'{n}_quasimetric.png')
     plt.close()
 
 # now generate a gif
@@ -114,8 +117,8 @@ images = []
 images_log = []
 for checkpoint in checkpoints:
     n = int(checkpoint.split('_')[1][3:])
-    images.append(imageio.imread(CHECKPOINT_DIR + f'/heatmap/{n}_1.png'))
-    images_log.append(imageio.imread(CHECKPOINT_DIR + f'/heatmap/{n}_log.png'))
+    images.append(imageio.imread(CHECKPOINT_DIR + f'/heatmap/{n}_norm.png'))
+    images_log.append(imageio.imread(CHECKPOINT_DIR + f'/heatmap/{n}_quasimetric.png'))
 
-imageio.mimsave(CHECKPOINT_DIR + '/heatmap.gif', images, duration=0.5)
-imageio.mimsave(CHECKPOINT_DIR + '/heatmap_log.gif', images_log, duration=0.5)
+imageio.mimsave(CHECKPOINT_DIR + '/heatmap_norm.gif', images, duration=0.5)
+imageio.mimsave(CHECKPOINT_DIR + '/heatmap_quasimetric.gif', images_log, duration=0.5)
