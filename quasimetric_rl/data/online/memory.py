@@ -100,11 +100,13 @@ class LatentCollection(TensorCollectionAttrsMixin):  # TensorCollectionAttrsMixi
     k: int = 20
     n: int = 10_000
 
-    def __init__(self, device: torch.device):
+    def __init__(self, downsample_n, novel_k, device: torch.device):
         super().__init__()
         self.states = torch.empty((0,)).to(device)
         self.latent = torch.empty((0,)).to(device)
         self.device = device
+        self.n = downsample_n
+        self.k = novel_k
 
     def add_state(self, state: torch.Tensor, latent: torch.Tensor):
         # TODO: refactor

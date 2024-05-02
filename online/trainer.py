@@ -54,6 +54,9 @@ class InteractionConf:
 
     novel: bool = attrs.field(default=True)
     random: bool = attrs.field(default=False)
+    downsample: str = attrs.field(default='downsample', validator=attrs.validators.in_(['downsample', 'cluster_latents', 'cluster_states']))
+    downsample_n: int = attrs.field(default=10_000, validator=attrs.validators.gt(0))
+    novel_k: int = attrs.field(default=50, validator=attrs.validators.gt(0))
 
 
 class Trainer(object):
@@ -97,9 +100,14 @@ class Trainer(object):
         self.replay = replay
         self.eval_seed = eval_seed
         self.batch_size = batch_size
-        self.latent_collection = LatentCollection(device=self.device)
+        self.latent_collection = LatentCollection(
+            device=self.device,
+            downsample_n=interaction_conf.downsample_n, 
+            novel_k=interaction_conf.novel_k
+            )
         self.novel = interaction_conf.novel
         self.random = interaction_conf.random
+        self.downsample = interaction_conf.downsample
 
         self.exploration_eps = interaction_conf.exploration_eps
         self.total_env_steps = interaction_conf.total_env_steps
@@ -236,7 +244,7 @@ class Trainer(object):
         # TODO: how do we handle the 2 critics?
         print("******** novelty_update ********")
         print("LatentCollection size: ", len(self.latent_collection.latent))
-        self.latent_collection.reduceCollection(mode = 'downsample') # other options available
+        self.latent_collection.reduceCollection(mode = self.downsample)
         self.latent_collection.update(self.agent.critics[0])
         print("LatentCollection size: ", len(self.latent_collection.latent))
 
