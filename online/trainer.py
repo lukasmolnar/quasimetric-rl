@@ -10,6 +10,7 @@ import gym.spaces
 import numpy as np
 import torch
 import torch.utils.data
+import random
 
 from quasimetric_rl.modules import QRLConf, QRLAgent, QRLLosses, InfoT
 from quasimetric_rl.data import BatchData, EpisodeData, MultiEpisodeData
@@ -196,24 +197,54 @@ class Trainer(object):
 
     def collect_rollout(self, *, eval: bool = False, store: bool = True,
                         env: Optional[FixedLengthEnvWrapper] = None) -> EpisodeData:
-        assert self.agent.actor is not None
+        if self.agent.actor is None:
+            @torch.no_grad()
+            def epsilon_greedy_actor(obs: torch.Tensor, goal: torch.Tensor, space: gym.spaces.Space):
+                num_actions = env.action_space.n
+                actions = torch.tensor([i for i in range(num_actions)])
+                # Epsilon-greedy action selection
+                if random.random() < self.exploration_eps:
+                    best = random.choice(actions)
+                    print("Random action: ", best)
+                else:
+                    critic_0 = self.agent.critics[0]
+                    latent_goal = critic_0.encoder(goal)
+                    dist_to_goal = np.inf
+                    best_actions = []
+                    # Iterate over all possible actions
+                    # Get the latent representation of the next state given the current state and the one-hot encoded action
+                    latent_state = critic_0.encoder(obs)
+                    next_latent_states = critic_0.latent_dynamics(latent_state, actions)
+                    for i in range(num_actions):
+                        a = actions[i]
+                        next_state = next_latent_states[i,:]
+                        d = critic_0.quasimetric_model(next_state, latent_goal)
+                        if d < dist_to_goal:
+                            dist_to_goal = d
+                            best_actions = [a]
+                        elif d == dist_to_goal:
+                            best_actions.append(a)
+                    best = best_actions[torch.randint(len(best_actions), (1,)).item()]
+                    print("Best action: ", best)
+                return best
+            rollout = self.replay.collect_rollout(epsilon_greedy_actor, env=env)
+        else:
+            @torch.no_grad()
+            def actor(obs: torch.Tensor, goal: torch.Tensor, space: gym.spaces.Space):
+                with self.agent.mode(False):
+                    adistn = self.agent.actor(obs[None].to(self.device), goal[None].to(self.device))
+                if eval:
+                    a = adistn.mode.cpu().numpy()[0]
+                else:
+                    a_t = adistn.sample()
+                    if self.exploration_eps != 0:
+                        # FIXME: this only works with [-1, 1] range!  # a hack :)
+                        a_t += torch.randn_like(a_t).mul_(self.exploration_eps)
+                        a_t.clamp_(-1, 1)
+                    a = a_t.cpu().numpy()[0]
+                return a
 
-        @torch.no_grad()
-        def actor(obs: torch.Tensor, goal: torch.Tensor, space: gym.spaces.Space):
-            with self.agent.mode(False):
-                adistn = self.agent.actor(obs[None].to(self.device), goal[None].to(self.device))
-            if eval:
-                a = adistn.mode.cpu().numpy()[0]
-            else:
-                a_t = adistn.sample()
-                if self.exploration_eps != 0:
-                    # FIXME: this only works with [-1, 1] range!  # a hack :)
-                    a_t += torch.randn_like(a_t).mul_(self.exploration_eps)
-                    a_t.clamp_(-1, 1)
-                a = a_t.cpu().numpy()[0]
-            return a
-
-        rollout = self.replay.collect_rollout(actor, env=env)
+            rollout = self.replay.collect_rollout(actor, env=env)
         if store:
             self.replay.add_rollout(rollout)
             self.latent_collection.add_rollout(rollout, self.agent.critics[0])
