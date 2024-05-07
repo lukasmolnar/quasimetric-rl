@@ -141,6 +141,30 @@ class Trainer(object):
         return self.replay.sample(
             self.batch_size,
         ).to(self.device)
+    
+    def greedy_actor(self, env, obs: torch.Tensor, goal: torch.Tensor, space: gym.spaces.Space):
+        num_actions = env.action_space.n
+        actions = torch.tensor([i for i in range(num_actions)]).to(self.device)
+        critic_0 = self.agent.critics[0]
+        latent_goal = critic_0.encoder(goal.to(self.device))
+        dist_to_goal = np.inf
+        best_actions = []
+        # Iterate over all possible actions
+        # Get the latent representation of the next state given the current state and the one-hot encoded action
+        latent_state = critic_0.encoder(obs.to(self.device))
+        next_latent_states = critic_0.latent_dynamics(latent_state, actions)
+        for i in range(num_actions):
+            a = actions[i]
+            next_state = next_latent_states[i,:]
+            d = critic_0.quasimetric_model(next_state, latent_goal)
+            if d < dist_to_goal:
+                dist_to_goal = d
+                best_actions = [a]
+            elif d == dist_to_goal:
+                best_actions.append(a)
+        best = best_actions[torch.randint(len(best_actions), (1,)).item()]
+        return best
+
 
     def collect_random_rollout(self, *, store: bool = True, env: Optional[FixedLengthEnvWrapper] = None) -> EpisodeData:
         rollout = self.replay.collect_rollout(
@@ -177,18 +201,15 @@ class Trainer(object):
                     action_novelty[a] = nov
 
                 # Get the action with the highest novelty
-                return max(action_novelty, key=action_novelty.get)
+                return max(action_novelty, key=action_novelty.get).cpu()
             
             # Epsilon-greedy action selection
             if random.random() < self.exploration_eps:
-                num_actions = env.action_space.n
-                actions = torch.tensor([i for i in range(num_actions)]).to(self.device)
-                best = random.choice(actions)
-                print("Random action: ", best)
-            else:
                 best = novel_actor(obs, goal, space)
                 print("Novel action: ", best)
-
+            else:
+                best = self.greedy_actor(env, obs, goal, space)
+                print("Greedy action: ", best)
             return best
 
         rollout = self.replay.collect_rollout(actor, env=env)
@@ -204,29 +225,6 @@ class Trainer(object):
         if self.agent.actor is None:
             @torch.no_grad()
             def actor(obs: torch.Tensor, goal: torch.Tensor, space: gym.spaces.Space):
-                def greedy_actor(obs: torch.Tensor, goal: torch.Tensor, space: gym.spaces.Space):
-                    num_actions = env.action_space.n
-                    actions = torch.tensor([i for i in range(num_actions)])
-                    critic_0 = self.agent.critics[0]
-                    latent_goal = critic_0.encoder(goal)
-                    dist_to_goal = np.inf
-                    best_actions = []
-                    # Iterate over all possible actions
-                    # Get the latent representation of the next state given the current state and the one-hot encoded action
-                    latent_state = critic_0.encoder(obs)
-                    next_latent_states = critic_0.latent_dynamics(latent_state, actions)
-                    for i in range(num_actions):
-                        a = actions[i]
-                        next_state = next_latent_states[i,:]
-                        d = critic_0.quasimetric_model(next_state, latent_goal)
-                        if d < dist_to_goal:
-                            dist_to_goal = d
-                            best_actions = [a]
-                        elif d == dist_to_goal:
-                            best_actions.append(a)
-                    best = best_actions[torch.randint(len(best_actions), (1,)).item()]
-                    print("Best action: ", best)
-                    return best
                 # Epsilon-greedy action selection
                 if random.random() < self.exploration_eps:
                     num_actions = env.action_space.n
@@ -234,7 +232,7 @@ class Trainer(object):
                     best = random.choice(actions)
                     print("Random action: ", best)
                 else:
-                    best = greedy_actor(obs, goal, space)
+                    best = self.greedy_actor(env, obs, goal, space)
                     print("Greedy action: ", best)
                 return best
         else:
