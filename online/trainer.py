@@ -159,33 +159,37 @@ class Trainer(object):
 
         @torch.no_grad()
         def actor(obs: torch.Tensor, goal: torch.Tensor, space: gym.spaces.Space):
-            def one_hot_encode(action, num_actions):
-                # Create a zero vector of length num_actions
-                one_hot = np.zeros(num_actions)
-                # Set the action index to 1
-                one_hot[action] = 1
-                return one_hot
+            def novel_actor(obs: torch.Tensor, goal: torch.Tensor, space: gym.spaces.Space):
+                action_novelty = {}
+                num_actions = env.action_space.n
+                # Iterate over all possible actions
+                actions = torch.tensor([i for i in range(num_actions)]).to(self.device)
+                # Get the latent representation of the next state given the current state and the one-hot encoded action
+                critic_0 = self.agent.critics[0]
+                latent_state = critic_0.encoder(obs[None].to(self.device))
+                next_latent_states = critic_0.latent_dynamics(latent_state, actions)
+                # Calculate the novelty of the next state
+                for i in range(num_actions):
+                    a = actions[i]
+                    next_state = next_latent_states[i,:]
+                    nov = self.latent_collection.novelty(next_state)
+                    # Store the novelty of the next state with the action
+                    action_novelty[a] = nov
+
+                # Get the action with the highest novelty
+                return max(action_novelty, key=action_novelty.get)
             
-            action_novelty = {}
-            num_actions = env.action_space.n
-            # Iterate over all possible actions
-            actions = torch.tensor([i for i in range(num_actions)]).to(self.device)
-            # Get the latent representation of the next state given the current state and the one-hot encoded action
-            critic_0 = self.agent.critics[0]
-            latent_state = critic_0.encoder(obs[None].to(self.device))
-            next_latent_states = critic_0.latent_dynamics(latent_state, actions)
-            # Calculate the novelty of the next state
-            for i in range(num_actions):
-                a = actions[i]
-                next_state = next_latent_states[i,:]
-                nov = self.latent_collection.novelty(next_state)
-                # Store the novelty of the next state with the action
-                action_novelty[a] = nov
+            # Epsilon-greedy action selection
+            if random.random() < self.exploration_eps:
+                num_actions = env.action_space.n
+                actions = torch.tensor([i for i in range(num_actions)]).to(self.device)
+                best = random.choice(actions)
+                print("Random action: ", best)
+            else:
+                best = novel_actor(obs, goal, space)
+                print("Novel action: ", best)
 
-            # Get the action with the highest novelty
-            a_novel = max(action_novelty, key=action_novelty.get)
-
-            return a_novel.cpu()
+            return best
 
         rollout = self.replay.collect_rollout(actor, env=env)
         if store:
@@ -199,14 +203,10 @@ class Trainer(object):
                         env: Optional[FixedLengthEnvWrapper] = None) -> EpisodeData:
         if self.agent.actor is None:
             @torch.no_grad()
-            def epsilon_greedy_actor(obs: torch.Tensor, goal: torch.Tensor, space: gym.spaces.Space):
-                num_actions = env.action_space.n
-                actions = torch.tensor([i for i in range(num_actions)])
-                # Epsilon-greedy action selection
-                if random.random() < self.exploration_eps:
-                    best = random.choice(actions)
-                    print("Random action: ", best)
-                else:
+            def actor(obs: torch.Tensor, goal: torch.Tensor, space: gym.spaces.Space):
+                def greedy_actor(obs: torch.Tensor, goal: torch.Tensor, space: gym.spaces.Space):
+                    num_actions = env.action_space.n
+                    actions = torch.tensor([i for i in range(num_actions)])
                     critic_0 = self.agent.critics[0]
                     latent_goal = critic_0.encoder(goal)
                     dist_to_goal = np.inf
@@ -226,8 +226,17 @@ class Trainer(object):
                             best_actions.append(a)
                     best = best_actions[torch.randint(len(best_actions), (1,)).item()]
                     print("Best action: ", best)
+                    return best
+                # Epsilon-greedy action selection
+                if random.random() < self.exploration_eps:
+                    num_actions = env.action_space.n
+                    actions = torch.tensor([i for i in range(num_actions)])
+                    best = random.choice(actions)
+                    print("Random action: ", best)
+                else:
+                    best = greedy_actor(obs, goal, space)
+                    print("Greedy action: ", best)
                 return best
-            rollout = self.replay.collect_rollout(epsilon_greedy_actor, env=env)
         else:
             @torch.no_grad()
             def actor(obs: torch.Tensor, goal: torch.Tensor, space: gym.spaces.Space):
@@ -244,7 +253,7 @@ class Trainer(object):
                     a = a_t.cpu().numpy()[0]
                 return a
 
-            rollout = self.replay.collect_rollout(actor, env=env)
+        rollout = self.replay.collect_rollout(actor, env=env)
         if store:
             self.replay.add_rollout(rollout)
             self.latent_collection.add_rollout(rollout, self.agent.critics[0])
