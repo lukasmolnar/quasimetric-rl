@@ -97,8 +97,8 @@ class LatentCollection(TensorCollectionAttrsMixin):  # TensorCollectionAttrsMixi
     states: torch.Tensor
     latent: torch.Tensor
     device: torch.device
-    k: int = 20
-    n: int = 10_000
+    k: int
+    n: int
 
     def __init__(self, downsample_n, novel_k, device: torch.device):
         super().__init__()
@@ -115,7 +115,7 @@ class LatentCollection(TensorCollectionAttrsMixin):  # TensorCollectionAttrsMixi
         self.states = torch.cat((self.states.reshape(-1,state_dim), state.unsqueeze(0).to(self.device)), dim=0)
         self.latent = torch.cat((self.latent.reshape(-1,latent_dim), latent.unsqueeze(0).to(self.device)), dim=0)
 
-    def add_rollout(self, episode: EpisodeData, critic: Collection[quasimetric_critic.QuasimetricCritic]):
+    def add_rollout(self, episode: EpisodeData, critic: quasimetric_critic.QuasimetricCritic):
         if critic is None:
             # latent like state with zeros
             for state in episode.all_observations:
@@ -126,12 +126,18 @@ class LatentCollection(TensorCollectionAttrsMixin):  # TensorCollectionAttrsMixi
             latent = critic.encoder(state.to(self.device))
             self.add_state(state, latent)
 
-    def novelty(self, new_latent_state: torch.Tensor):
+    def novelty(self, new_latent_state: torch.Tensor, critic: quasimetric_critic.QuasimetricCritic):
         if self.latent.shape[0] < self.k:
             return 0
-        new_copied = new_latent_state.repeat(self.latent.shape[0], 1)
-        dist = torch.norm(self.latent - new_copied, dim=1)
-        return dist.topk(self.k, largest=False).values.mean()
+        new_latent_copies = new_latent_state.repeat(self.latent.shape[0], 1)
+        dist = torch.norm(self.latent - new_latent_copies, dim=1)
+        # return dist.topk(self.k, largest=False).values.mean()
+
+        # Calculate nearest k neighbors based on torch.norm, then calculate novelty as the 
+        # average quasimetric distance to those k neighbors
+        nearest_k = self.latent[dist.topk(self.k, largest=False).indices]
+        quasi_dist_k = critic.quasimetric_model(new_latent_copies[:self.k], nearest_k)
+        return quasi_dist_k.mean()
     
     def reduceCollection(self, mode = 'cluster latents'):
         # downsample the collection to n states
@@ -333,10 +339,10 @@ class ReplayBuffer(Dataset):
                     is_success = dist_to_goal_pos < 0.01
                 elif 'MountainCar' in env.spec.id:
                     # mountain car goal pos is 1D
-                    # TODO: maybe reconsider
-                    # dist_to_goal_pos = torch.norm(agoal[:1] - goal[:1])
-                    # is_success = dist_to_goal_pos < 0.01
-                    is_success = agoal[0] >= goal[0]
+                    rel_dist_to_goal = agoal[:1] - goal[:1]
+                    velocity = agoal[1]
+                    # definition from paper appendix
+                    is_success = rel_dist_to_goal >= 0 and rel_dist_to_goal <= 0.1 and velocity >= 0
                 elif 'CartPole' in env.spec.id:
                     # mountain car goal pos is 2D (last 2 entries)
                     dist_to_goal_pos = torch.norm(agoal[2:] - goal[2:])

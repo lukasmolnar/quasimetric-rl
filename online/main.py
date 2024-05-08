@@ -37,7 +37,7 @@ class Conf(BaseConf):
     interaction: InteractionConf = InteractionConf()
 
     log_steps: int = attrs.field(default=50_000, validator=attrs.validators.gt(0))
-    eval_steps: int = attrs.field(default=100_000, validator=attrs.validators.gt(0))
+    eval_steps: int = attrs.field(default=10_000, validator=attrs.validators.gt(0))
     save_steps: int = attrs.field(default=50_000, validator=attrs.validators.gt(0))
     novel_steps: int = attrs.field(default=10_000, validator=attrs.validators.gt(0))
 
@@ -164,8 +164,8 @@ def train(dict_cfg: DictConfig):
             continue  # just train more, only eval/log/save right before new env step
         step_counter.update_to_then_record_alerts(env_steps)
 
-        # if step_counter.alerts.eval:
-        #     eval(env_steps, optim_steps)
+        if step_counter.alerts.eval:
+            eval(env_steps, optim_steps)
 
         if step_counter.alerts.save:
             save(env_steps, optim_steps)

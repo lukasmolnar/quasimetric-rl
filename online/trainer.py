@@ -56,7 +56,7 @@ class InteractionConf:
     novel: bool = attrs.field(default=True)
     random: bool = attrs.field(default=False)
     downsample: str = attrs.field(default='downsample', validator=attrs.validators.in_(['downsample', 'cluster_latents', 'cluster_states']))
-    downsample_n: int = attrs.field(default=10_000, validator=attrs.validators.gt(0))
+    downsample_n: int = attrs.field(default=100_000, validator=attrs.validators.gt(0))
     novel_k: int = attrs.field(default=50, validator=attrs.validators.gt(0))
 
 
@@ -196,7 +196,7 @@ class Trainer(object):
                 for i in range(num_actions):
                     a = actions[i]
                     next_state = next_latent_states[i,:]
-                    nov = self.latent_collection.novelty(next_state)
+                    nov = self.latent_collection.novelty(next_state, critic_0)
                     # Store the novelty of the next state with the action
                     action_novelty[a] = nov
 
@@ -204,13 +204,13 @@ class Trainer(object):
                 return max(action_novelty, key=action_novelty.get).cpu()
             
             # Epsilon-greedy action selection
-            if random.random() < self.exploration_eps:
+            if not eval and random.random() < self.exploration_eps:
                 best = novel_actor(obs, goal, space)
-                print("Novel action: ", best)
+                # print("Novel action: ", best)
             else:
                 best = self.greedy_actor(env, obs, goal, space)
-                print("Greedy action: ", best)
-            return best
+                # print("Greedy action: ", best)
+            return best.cpu()
 
         rollout = self.replay.collect_rollout(actor, env=env)
         if store:
@@ -226,15 +226,16 @@ class Trainer(object):
             @torch.no_grad()
             def actor(obs: torch.Tensor, goal: torch.Tensor, space: gym.spaces.Space):
                 # Epsilon-greedy action selection
-                if random.random() < self.exploration_eps:
+                if not eval and random.random() < self.exploration_eps:
                     num_actions = env.action_space.n
                     actions = torch.tensor([i for i in range(num_actions)])
                     best = random.choice(actions)
-                    print("Random action: ", best)
+                    # print("Random action: ", best)
                 else:
                     best = self.greedy_actor(env, obs, goal, space)
-                    print("Greedy action: ", best)
-                return best
+                    # print("Greedy action: ", best)
+                return best.cpu()
+            
         else:
             @torch.no_grad()
             def actor(obs: torch.Tensor, goal: torch.Tensor, space: gym.spaces.Space):
@@ -325,7 +326,7 @@ class Trainer(object):
 
         while self.replay.num_transitions_realized < total_env_steps:
             env = self.make_collect_env()
-            for _ in range(self.num_rollouts_per_cycle):
+            for _ in tqdm(range(self.num_rollouts_per_cycle), desc='rollout'):
                 # TODO: This is where we change the training data to be novel
                 if self.novel:
                     self.collect_novel_rollout(env=env)
