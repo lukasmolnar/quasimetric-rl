@@ -142,6 +142,29 @@ class Trainer(object):
             self.batch_size,
         ).to(self.device)
     
+    def env_dynamic(self, env, obs, action):
+        assert env.action_space.contains(
+            action
+        ), f"{action!r} ({type(action)}) invalid"
+        if env.spec.id == "MountainCar-v0":
+            position, velocity = obs
+            velocity += (action - 1) * env.force + np.cos(3 * position) * (-env.gravity)
+            velocity = np.clip(velocity, -env.max_speed, env.max_speed)
+            position += velocity
+            position = np.clip(position, env.min_position, env.max_position)
+            if position == env.min_position and velocity < 0:
+                velocity = 0
+
+            terminated = bool(
+                position >= env.goal_position and velocity >= env.goal_velocity
+            )
+            # return tensor of next state
+            next_obs = (position, velocity)
+
+        else:
+            raise NotImplementedError
+        return next_obs, terminated
+    
     def greedy_actor(self, env, obs: torch.Tensor, goal: torch.Tensor, space: gym.spaces.Space):
         num_actions = env.action_space.n
         actions = torch.tensor([i for i in range(num_actions)]).to(self.device)
@@ -183,25 +206,35 @@ class Trainer(object):
 
         @torch.no_grad()
         def actor(obs: torch.Tensor, goal: torch.Tensor, space: gym.spaces.Space):
-            def novel_actor(obs: torch.Tensor, goal: torch.Tensor, space: gym.spaces.Space):
+            def novel_actor(obs: torch.Tensor, goal: torch.Tensor, space: gym.spaces.Space, mode = 'state'):
                 action_novelty = {}
                 num_actions = env.action_space.n
                 # Iterate over all possible actions
                 actions = torch.tensor([i for i in range(num_actions)]).to(self.device)
-                # Get the latent representation of the next state given the current state and the one-hot encoded action
                 critic_0 = self.agent.critics[0]
-                latent_state = critic_0.encoder(obs[None].to(self.device))
-                next_latent_states = critic_0.latent_dynamics(latent_state, actions)
-                # Calculate the novelty of the next state
-                for i in range(num_actions):
-                    a = actions[i]
-                    next_state = next_latent_states[i,:]
-                    nov = self.latent_collection.novelty(next_state, critic_0)
-                    # Store the novelty of the next state with the action
-                    action_novelty[a] = nov
-
-                # Get the action with the highest novelty
-                return max(action_novelty, key=action_novelty.get).cpu()
+                if mode == 'latent':
+                    # Get the latent representation of the next state given the current state and the one-hot encoded action
+                    latent_state = critic_0.encoder(obs[None].to(self.device))
+                    next_latent_states = critic_0.latent_dynamics(latent_state, actions)
+                    # Calculate the novelty of the next state
+                    for i in range(num_actions):
+                        a = actions[i]
+                        next_state = next_latent_states[i,:]
+                        nov = self.latent_collection.novelty(next_state, critic_0, mode = mode)
+                        # Store the novelty of the next state with the action
+                        action_novelty[a] = nov
+                    # Get the action with the highest novelty
+                    action = max(action_novelty, key=action_novelty.get).cpu()
+                elif mode == 'state':
+                    for i in range(num_actions):
+                        a = actions[i]
+                        next_state, _ = self.env_dynamic(env, obs.cpu().numpy(), a.cpu().numpy())
+                        nov = self.latent_collection.novelty(torch.tensor(next_state), critic_0, mode = mode)
+                        action_novelty[a] = nov
+                    action = max(action_novelty, key=action_novelty.get).cpu()
+                else:
+                    raise NotImplementedError(f"Mode {mode} not implemented")
+                return action
             
             # Epsilon-greedy action selection
             if not eval and random.random() < self.exploration_eps:

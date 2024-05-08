@@ -126,18 +126,25 @@ class LatentCollection(TensorCollectionAttrsMixin):  # TensorCollectionAttrsMixi
             latent = critic.encoder(state.to(self.device))
             self.add_state(state, latent)
 
-    def novelty(self, new_latent_state: torch.Tensor, critic: quasimetric_critic.QuasimetricCritic):
+    def novelty(self, new_latent_state: torch.Tensor, critic: quasimetric_critic.QuasimetricCritic, mode ='latent'):
         if self.latent.shape[0] < self.k:
             return 0
-        new_latent_copies = new_latent_state.repeat(self.latent.shape[0], 1)
-        dist = torch.norm(self.latent - new_latent_copies, dim=1)
-        # return dist.topk(self.k, largest=False).values.mean()
+        if mode == 'latent':
+            new_latent_copies = new_latent_state.repeat(self.latent.shape[0], 1)
+            dist = torch.norm(self.latent - new_latent_copies, dim=1)
+            # return dist.topk(self.k, largest=False).values.mean()
 
-        # Calculate nearest k neighbors based on torch.norm, then calculate novelty as the 
-        # average quasimetric distance to those k neighbors
-        nearest_k = self.latent[dist.topk(self.k, largest=False).indices]
-        quasi_dist_k = critic.quasimetric_model(new_latent_copies[:self.k], nearest_k)
-        return quasi_dist_k.mean()
+            # Calculate nearest k neighbors based on torch.norm, then calculate novelty as the 
+            # average quasimetric distance to those k neighbors
+            nearest_k = self.latent[dist.topk(self.k, largest=False).indices]
+            quasi_dist_k = critic.quasimetric_model(new_latent_copies[:self.k], nearest_k)
+            return quasi_dist_k.mean()
+        elif mode == 'state':
+            new_states_copies = new_latent_state.repeat(self.latent.shape[0], 1)
+            dist = torch.norm(self.states - new_states_copies, dim=1)
+            return dist.topk(self.k, largest=False).values.mean()
+        else:
+            raise NotImplementedError(f"Mode {mode} not implemented")
     
     def reduceCollection(self, mode = 'cluster latents'):
         # downsample the collection to n states
