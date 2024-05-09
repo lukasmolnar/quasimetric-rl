@@ -424,6 +424,28 @@ class ReplayBuffer(Dataset):
 """.strip('\n'),
         ] + lines[-1:]
         return '\n'.join(lines)
+    
+    def save_to_csv(self, path: str):
+        import pandas as pd
+        valid_episodes = self.num_transitions_realized
+        valid_observations = self.raw_data.all_observations[:valid_episodes]
+        # Flatten the observations across episodes while preserving transition order
+        # Let's assume each observation has components x (position) and v (velocity)
+        # Flatten along the first two dimensions (episodes and transitions within each episode)
+        observations_flat = valid_observations.view(-1, valid_observations.shape[-1])
+        # Convert tensor to numpy array and extract the columns for x and v
+        observations_x = observations_flat[:, 0].cpu().numpy()  # Example index for position
+        observations_v = observations_flat[:, 1].cpu().numpy()  # Example index for velocity
+        
+        # Create a DataFrame with the flattened and valid observations
+        data = {
+            'observations_x': observations_x,
+            'observations_v': observations_v,
+        }
+        df = pd.DataFrame(data)
+        
+        # Save the DataFrame to a CSV file
+        df.to_csv(path, index=False)  # index=False to avoid writing row numbers
 
 
 from . import gcrl  # register

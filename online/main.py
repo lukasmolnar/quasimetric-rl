@@ -25,6 +25,8 @@ from quasimetric_rl.base_conf import BaseConf
 
 from .trainer import Trainer, InteractionConf
 
+import pandas as pd
+
 
 @utils.singleton
 @attrs.define(kw_only=True)
@@ -188,6 +190,8 @@ def train(dict_cfg: DictConfig):
     # save all visited states
     visited_states = trainer.latent_collection.states
     torch.save(visited_states, os.path.join(cfg.output_dir, 'visited_states_final.pth'))
+    # save_to_csv
+    trainer.replay.save_to_csv(os.path.join(cfg.output_dir, 'replay.csv'))
 
 if __name__ == '__main__':
     if 'MUJOCO_GL' not in os.environ:
