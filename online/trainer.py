@@ -49,15 +49,15 @@ class InteractionConf:
     num_prefill_episodes: int = attrs.field(default=20, validator=attrs.validators.ge(0))
     num_samples_per_cycle: int = attrs.field(default=500, validator=attrs.validators.ge(0))
     num_rollouts_per_cycle: int = attrs.field(default=10, validator=attrs.validators.ge(0))
-    num_eval_episodes: int = attrs.field(default=50, validator=attrs.validators.ge(0))
+    num_eval_episodes: int = attrs.field(default=20, validator=attrs.validators.ge(0))
 
+    exploration_method: str = attrs.field(default='novel', validator=attrs.validators.in_(['eps_greedy', 'novel', 'novel_eps_greedy', 'softmax', 'random']))
     exploration_eps: float = attrs.field(default=0.3, validator=attrs.validators.ge(0))
 
-    novel: bool = attrs.field(default=True)
-    random: bool = attrs.field(default=False)
     downsample: str = attrs.field(default='downsample', validator=attrs.validators.in_(['downsample', 'cluster_latents', 'cluster_states']))
     downsample_n: int = attrs.field(default=100_000, validator=attrs.validators.gt(0))
     novel_k: int = attrs.field(default=50, validator=attrs.validators.gt(0))
+    novelty_mode: str = attrs.field(default='state', validator=attrs.validators.in_(['state', 'latent']))
 
 
 class Trainer(object):
@@ -74,10 +74,9 @@ class Trainer(object):
     num_samples_per_cycle: int
     num_rollouts_per_cycle: int
     num_eval_episodes: int
-    exploration_eps: float
 
-    novel: bool
-    random: bool
+    exploration_method: str
+    exploration_eps: float
 
     def get_total_optim_steps(self, total_env_steps: int):
         total_env_steps -= self.replay.num_episodes_realized * self.replay.episode_length
@@ -106,11 +105,11 @@ class Trainer(object):
             downsample_n=interaction_conf.downsample_n, 
             novel_k=interaction_conf.novel_k
             )
-        self.novel = interaction_conf.novel
-        self.random = interaction_conf.random
         self.downsample = interaction_conf.downsample
-
+        self.novelty_mode = interaction_conf.novelty_mode
+        self.exploration_method = interaction_conf.exploration_method
         self.exploration_eps = interaction_conf.exploration_eps
+
         self.total_env_steps = interaction_conf.total_env_steps
         self.num_samples_per_cycle = interaction_conf.num_samples_per_cycle
         self.num_rollouts_per_cycle = interaction_conf.num_rollouts_per_cycle
@@ -201,9 +200,6 @@ class Trainer(object):
 
     def collect_novel_rollout(self, *, eval: bool = False, store: bool = True,
                         env: Optional[FixedLengthEnvWrapper] = None) -> EpisodeData:
-        # TODO: check what agent.actor should be
-        # assert self.agent.actor is not None
-
         @torch.no_grad()
         def actor(obs: torch.Tensor, goal: torch.Tensor, space: gym.spaces.Space):
             def novel_actor(obs: torch.Tensor, goal: torch.Tensor, space: gym.spaces.Space, mode = 'state'):
@@ -219,7 +215,7 @@ class Trainer(object):
                     # Calculate the novelty of the next state
                     for i in range(num_actions):
                         a = actions[i]
-                        next_state = next_latent_states[i,:]
+                        next_state = next_latent_states[i,:].cpu()
                         nov = self.latent_collection.novelty(next_state, critic_0, mode = mode)
                         # Store the novelty of the next state with the action
                         action_novelty[a] = nov
@@ -229,16 +225,17 @@ class Trainer(object):
                     for i in range(num_actions):
                         a = actions[i]
                         next_state, _ = self.env_dynamic(env, obs.cpu().numpy(), a.cpu().numpy())
-                        nov = self.latent_collection.novelty(torch.tensor(next_state), critic_0, mode = mode)
+                        next_state = torch.tensor(next_state).to(self.device)
+                        nov = self.latent_collection.novelty(next_state, critic_0, mode = mode)
                         action_novelty[a] = nov
                     action = max(action_novelty, key=action_novelty.get).cpu()
                 else:
                     raise NotImplementedError(f"Mode {mode} not implemented")
-                return action
+                return action.cpu()
             
             # Epsilon-greedy action selection
             if not eval and random.random() < self.exploration_eps:
-                best = novel_actor(obs, goal, space)
+                best = novel_actor(obs, goal, space, mode = self.novelty_mode)
                 # print("Novel action: ", best)
             else:
                 best = self.greedy_actor(env, obs, goal, space)
@@ -248,8 +245,40 @@ class Trainer(object):
         rollout = self.replay.collect_rollout(actor, env=env)
         if store:
             self.replay.add_rollout(rollout)
-            # store the novelty of the next state
-            # TODO: how do we handle the 2 critics?
+            self.latent_collection.add_rollout(rollout, self.agent.critics[0])
+        return rollout
+
+    def collect_softmax_rollout(self, *, eval: bool = False, store: bool = True,
+                        env: Optional[FixedLengthEnvWrapper] = None) -> EpisodeData:
+        @torch.no_grad()
+        def actor(obs: torch.Tensor, goal: torch.Tensor, space: gym.spaces.Space):
+            num_actions = env.action_space.n
+            actions = torch.tensor([i for i in range(num_actions)]).to(self.device)
+            critic_0 = self.agent.critics[0]
+            latent_goal = critic_0.encoder(goal.to(self.device))
+            action_distances = torch.zeros(num_actions)
+            # Iterate over all possible actions
+            # Get the latent representation of the next state given the current state and the one-hot encoded action
+            latent_state = critic_0.encoder(obs.to(self.device))
+            next_latent_states = critic_0.latent_dynamics(latent_state, actions)
+            for i in range(num_actions):
+                a = actions[i]
+                next_state = next_latent_states[i,:]
+                d = critic_0.quasimetric_model(next_state, latent_goal)
+                action_distances[a] = -d # negative distance
+
+            # Calculate the temperature based on the range of action distances
+            temperature = (action_distances.max() - action_distances.min()).item()
+
+            action_probs = torch.nn.functional.softmax(action_distances/temperature, dim=0)
+            sample = torch.multinomial(action_probs, 1)
+            # print("Softmax probs:", action_probs)
+            # print("Softmax action: ", sample)
+            return sample.numpy()[0]
+
+        rollout = self.replay.collect_rollout(actor, env=env)
+        if store:
+            self.replay.add_rollout(rollout)
             self.latent_collection.add_rollout(rollout, self.agent.critics[0])
         return rollout
 
@@ -295,13 +324,9 @@ class Trainer(object):
         env = self.make_evaluate_env()
         rollouts = []
         for _ in tqdm(range(self.num_eval_episodes), desc='evaluate'):
-            # TODO: How do we act during evaluation
-            if self.novel:
-                rollouts.append(self.collect_novel_rollout(eval=True, store=False, env=env))
-            elif self.random:
-                rollouts.append(self.collect_random_rollout(env=env))
-            else:
-                rollouts.append(self.collect_rollout(eval=True, store=False, env=env))
+            # Collect rollout in evaluation mode
+            rollouts.append(self.collect_rollout(eval=True, store=False, env=env))
+
         mrollouts = MultiEpisodeData.cat(rollouts)
         return EvalEpisodeResult.from_timestep_reward_is_success(
             mrollouts.rewards.reshape(
@@ -361,12 +386,22 @@ class Trainer(object):
             env = self.make_collect_env()
             for _ in tqdm(range(self.num_rollouts_per_cycle), desc='rollout'):
                 # TODO: This is where we change the training data to be novel
-                if self.novel:
-                    self.collect_novel_rollout(env=env)
-                elif self.random:
-                    self.collect_random_rollout(env=env)
-                else:
+                if self.agent.actor is not None:
                     self.collect_rollout(env=env)
+                
+                expl = self.exploration_method
+                if expl == 'novel':
+                    self.exploration_eps = 1 # always novel
+                    self.collect_novel_rollout(env=env)
+                elif expl == 'novel_eps_greedy':
+                    self.collect_novel_rollout(env=env)
+                elif expl == 'eps_greedy':
+                    self.collect_rollout(env=env)
+                elif expl == 'softmax':
+                    self.collect_softmax_rollout(env=env)
+                else:
+                    raise NotImplementedError(f"exploration_method {expl} not implemented")
+
                 if self.replay.num_transitions_realized >= total_env_steps:
                     break
 
