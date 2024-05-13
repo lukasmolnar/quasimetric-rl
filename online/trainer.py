@@ -210,12 +210,15 @@ class Trainer(object):
                 critic_0 = self.agent.critics[0]
                 if mode == 'latent':
                     # Get the latent representation of the next state given the current state and the one-hot encoded action
-                    latent_state = critic_0.encoder(obs[None].to(self.device))
-                    next_latent_states = critic_0.latent_dynamics(latent_state, actions)
+                    # latent_state = critic_0.encoder(obs[None].to(self.device))
+                    # next_latent_states = critic_0.latent_dynamics(latent_state, actions)
                     # Calculate the novelty of the next state
                     for i in range(num_actions):
                         a = actions[i]
-                        next_state = next_latent_states[i,:].to(self.device)
+                        # next_state = next_latent_states[i,:].to(self.device)
+                        # HACK: we might need to use the environment dynamics to get the next state
+                        next_state, _ = self.env_dynamic(env, obs.cpu().numpy(), a.cpu().numpy())
+                        next_state = critic_0.encoder(torch.tensor(next_state).to(self.device))
                         nov = self.latent_collection.novelty(next_state, critic_0, mode = mode)
                         # Store the novelty of the next state with the action
                         action_novelty[a] = nov
