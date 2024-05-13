@@ -2,15 +2,18 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-folder = 'results_csv/'
+folder = '5_results_csv/'
 files = [
     'novel_eps_greedy_state',
     'novel_eps_greedy_latent',
-    'novel_latent',
-    'novel_state',
+    'novel_pure_latent',
+    'novel_pure_state',
 ]
-
-dfs = [pd.read_csv(folder + file + '.csv') for file in files]
+# idx 1, 2, 3, 4, 5
+idx = 1
+indices = range(1, 6)
+file_dir = [folder + file + f'_{idx}.csv' for file in files]
+dfs = [pd.read_csv(file) for file in file_dir]
 
 min_x = -1.2
 max_x = 0.6
@@ -26,10 +29,18 @@ prefill = 20_000
 def filter_df(df):
     n = len(df)
     # remove rows with is_success
-    df = df[df['observations_x'] < filter_x]
+    # df = df[df['observations_x'] < filter_x]
     df = df[prefill:]
-    print(f'Filtered {len(df)} out of {n} samples')
     return df.reset_index(drop=True)
+
+def load_and_filter_data(files, indices):
+    dfs = []
+    for idx in indices:
+        current_files = [f"{folder}{file}_{idx}.csv" for file in files]
+        current_dfs = [pd.read_csv(file) for file in current_files]
+        filtered_dfs = [filter_df(df) for df in current_dfs]
+        dfs.append(filtered_dfs)
+    return dfs
 
 def discretize(df, n=1000):
     bins = np.linspace(min_x, max_x, n)
@@ -71,32 +82,62 @@ def plot_and_save(data, labels, title, filename):
     plt.savefig(filename, dpi=300)
     plt.close()
 
-def plot(name, dfs, folder, files):
+def calculate_entropies(dfs):
+    dfs = [df.copy() for df in dfs]
+    dfs_discretized = [discretize(df) for df in dfs]
+    dfs_combined = [combine_v_x(df) for df in dfs_discretized]
+    entropies_combined = [running_entropy(df, 'combined') for df in dfs_combined]
+    entropies_combined_smooth = [smooth(r, window=10) for r in entropies_combined]
+    return entropies_combined_smooth
+
+def trim_entropies(entropies):
+    min_shape = min(e_i.shape[0] for e in entropies for e_i in e)
+    return [[e_i[:min_shape] for e_i in e] for e in entropies]
+
+# calculate mean and std of entropies
+def calculate_mean_std(entropies):
+    mean = np.mean(entropies, axis=0)
+    std = np.std(entropies, axis=0)
+    return mean, std
+
+def plot_mean_std(mean, std, files, folder, filename='mean_std'):
+    plt.figure(figsize=(15, 10))
+    for i, m in enumerate(mean):
+        plt.plot(m, label=files[i])
+        # cap the std at 10 and 0
+        # plt.fill_between(range(len(m)), m - std[i], m + std[i], alpha=0.3)
+        plt.fill_between(range(len(m)), np.maximum(m - std[i], 0), np.minimum(m + std[i], 10), alpha=0.3)
+    plt.legend()
+    plt.title('Mean and std of entropy')
+    plt.savefig(folder + filename, dpi=300)
+    plt.close()
+
+# ENTROPY 
+dfs_all_indices = load_and_filter_data(files, indices)
+entropies_all_indices = [calculate_entropies(dfs) for dfs in dfs_all_indices]
+trimmed_entropies_all_indices = trim_entropies(entropies_all_indices)
+mean, std = calculate_mean_std(trimmed_entropies_all_indices)
+plot_mean_std(mean, std, files, folder, 'Entropy_mean_std')
+
+def plot_entropy(name, dfs, folder, files):
     dfs_discretized = [discretize(df) for df in dfs]
 
-    print('Plotting entropy of x ...')
-    running_entropies_x = [running_entropy(df, 'observations_x') for df in dfs_discretized]
-    plot_and_save(running_entropies_x, files, name + ' of x', folder + name.replace(' ', '_') + '_x')
-    print('Plotting entropy of v ...')
-    running_entropies_v = [running_entropy(df, 'observations_v') for df in dfs_discretized]
-    plot_and_save(running_entropies_v, files, name + ' of v', folder + name.replace(' ', '_') + '_v')
     print('Plotting smoothed entropy of x ...')
+    running_entropies_x = [running_entropy(df, 'observations_x') for df in dfs_discretized]
     running_entropies_x_smooth = [smooth(r, window=10) for r in running_entropies_x]
     plot_and_save(running_entropies_x_smooth, files, name + ' of x (smoothed)', folder + name.replace(' ', '_') + '_x_smooth')
-    print('Plotting smoothed entropy of v ...')
+    running_entropies_v = [running_entropy(df, 'observations_v') for df in dfs_discretized]
     running_entropies_v_smooth = [smooth(r, window=10) for r in running_entropies_v]
+    print('Plotting smoothed entropy of v ...')
     plot_and_save(running_entropies_v_smooth, files, name + ' of v (smoothed)', folder + name.replace(' ', '_') + '_v_smooth')
 
     # combine x and v
-    print('Plotting entropy of x + v ...')
+    print('Plotting smoothed entropy of x + v ...')
     dfs_combined = [combine_v_x(df) for df in dfs_discretized]
     running_entropies_combined = [running_entropy(df, 'combined') for df in dfs_combined]
-    plot_and_save(running_entropies_combined, files, name + ' of x + v', folder + name.replace(' ', '_') + '_combined')
-    print('Plotting smoothed entropy of x + v ...')
     running_entropies_combined_smooth = [smooth(r, window=10) for r in running_entropies_combined]
     plot_and_save(running_entropies_combined_smooth, files, name + ' of x + v (smoothed)', folder + name.replace(' ', '_') + '_combined_smooth')
 
-plot('Running entropy', [df.reset_index(drop=True) for df in dfs], folder, files)
 
 # plot histogram of x and v
 def plot_hist(name, dfs, folder, files, column='observations_x'):
@@ -109,8 +150,6 @@ def plot_hist(name, dfs, folder, files, column='observations_x'):
     plt.savefig(folder + name.replace(' ', '_') , dpi=300)
     plt.close()
 
-plot_hist('Histogram of x', dfs, folder, files, 'observations_x')
-plot_hist('Histogram of v', dfs, folder, files, 'observations_v')
 
 # calculate running variance over the last 10k samples
 def running_variance(dfs, window = 20000):
@@ -123,7 +162,6 @@ def running_variance(dfs, window = 20000):
         running_variance.append((df['observations_x'].rolling(window=window).var())/delta_x + (df['observations_v'].rolling(window=window).var())/delta_v)
     return running_variance_x, running_variance_v, running_variance
 
-running_variance_x, running_variance_v, running_variance_x_v = running_variance(dfs)
 
 # plot running variance
 def plot(name, running_variance_x, folder, files):
@@ -136,6 +174,11 @@ def plot(name, running_variance_x, folder, files):
     plt.savefig(folder + name.replace(' ', '_') , dpi=300)
     plt.close()
 
+dfs_filtered = [filter_df(df) for df in dfs]
+plot_entropy('Running entropy', dfs_filtered.copy(), folder, files)
+plot_hist('Histogram of x', dfs_filtered.copy(), folder, files, 'observations_x')
+plot_hist('Histogram of v', dfs_filtered.copy(), folder, files, 'observations_v')
+running_variance_x, running_variance_v, running_variance_x_v = running_variance(dfs)
 plot('Running variance of x', running_variance_x, folder, files)
 plot('Running variance of v', running_variance_v, folder, files)
 plot('Running variance of x + v', running_variance_x_v, folder, files)
