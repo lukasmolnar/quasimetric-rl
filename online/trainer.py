@@ -44,7 +44,7 @@ class EvalEpisodeResult:
 
 @attrs.define(kw_only=True)
 class InteractionConf:
-    total_env_steps: int = attrs.field(default=int(200_000), validator=attrs.validators.gt(0))
+    total_env_steps: int = attrs.field(default=int(300_000), validator=attrs.validators.gt(0))
 
     num_prefill_episodes: int = attrs.field(default=20, validator=attrs.validators.ge(0))
     num_samples_per_cycle: int = attrs.field(default=500, validator=attrs.validators.ge(0))
@@ -55,7 +55,7 @@ class InteractionConf:
     exploration_eps: float = attrs.field(default=0.3, validator=attrs.validators.ge(0))
 
     downsample: str = attrs.field(default='downsample', validator=attrs.validators.in_(['downsample', 'cluster_latents', 'cluster_states']))
-    downsample_n: int = attrs.field(default=100_000, validator=attrs.validators.gt(0))
+    downsample_n: int = attrs.field(default=40_000, validator=attrs.validators.gt(0))
     novel_k: int = attrs.field(default=50, validator=attrs.validators.gt(0))
     novelty_mode: str = attrs.field(default='state', validator=attrs.validators.in_(['state', 'latent']))
 
@@ -215,7 +215,7 @@ class Trainer(object):
                     # Calculate the novelty of the next state
                     for i in range(num_actions):
                         a = actions[i]
-                        next_state = next_latent_states[i,:].cpu()
+                        next_state = next_latent_states[i,:].to(self.device)
                         nov = self.latent_collection.novelty(next_state, critic_0, mode = mode)
                         # Store the novelty of the next state with the action
                         action_novelty[a] = nov
