@@ -12,16 +12,13 @@ from quasimetric_rl.modules import QRLAgent, QRLConf
 
 NOVEL = True
 EPISODE_LENGTH = 1000
-CHECKPOINT_DIR = './online/results/gcrl_MountainCar-v0/run_novel_200k_downsample/'
-CHECKPOINT = 'checkpoint_env00200000_opt00009500_final.pth'
+CHECKPOINT_DIR = '/Users/hanno/Documents/_Studium/MIT2/quasimetric-rl/results_csv_all/final_checkpoints'
+CHECKPOINT = '/Users/hanno/Documents/_Studium/MIT2/quasimetric-rl/results_csv_all/final_checkpoints/random_5.pth'
 
-# find all .pth files in the directory
-checkpoints = [f for f in os.listdir(CHECKPOINT_DIR) if f.endswith('.pth')]
-# filter out the checkpoint
-checkpoints = [f for f in checkpoints if 'checkpoint' in f]
+checkpoints = [CHECKPOINT]
 
-# sort the checkpoints by the number of steps
-checkpoints.sort(key=lambda x: int(x.split('_')[1][3:]))
+# name of checkpoint
+checkpoint_name = CHECKPOINT.split('/')[-1].split('.')[0]
 
 with open(CHECKPOINT_DIR + '/config.yaml', 'r') as f:
     # load saved conf
@@ -46,7 +43,7 @@ for checkpoint in checkpoints:
 
 
     # 3. Load checkpoint
-    agent.load_state_dict(torch.load(CHECKPOINT_DIR + checkpoint, map_location='cpu')['agent'])
+    agent.load_state_dict(torch.load(checkpoint, map_location='cpu')['agent'])
 
 
     # 4. Simulate
@@ -57,6 +54,10 @@ for checkpoint in checkpoints:
     max_pos = 0.6
     min_vel = -0.07
     max_vel = 0.07
+
+    # now visualize the distances in a heatmap
+    dir = CHECKPOINT_DIR.split('final_checkpoints')[0] + 'heatmaps' + '/'
+    os.makedirs(dir, exist_ok=True)
 
     # create grid of positions and velocities
     positions = np.linspace(min_pos, max_pos, 100)
@@ -70,55 +71,49 @@ for checkpoint in checkpoints:
     # get the latent representation of the goal
     latent_goal_grid = latent_goal.repeat(latent_grid.shape[0], 1)
 
-    distances = torch.norm(latent_grid - latent_goal_grid, dim=-1)
+    # distances = torch.norm(latent_grid - latent_goal_grid, dim=-1)
+    # fig, ax = plt.subplots()
+    # cmap = plt.get_cmap('viridis')
+    # norm = Normalize(vmin=0, vmax=1)
+    # sm = ScalarMappable(norm=norm, cmap=cmap)
+    # np_d = distances.detach().numpy()
+    # np_d = np.emath.logn(100, np_d + 1)
+    # colors = sm.to_rgba(np_d)
+    # ax.scatter(grid[:,0], grid[:,1], c=colors)
+    # plt.colorbar(sm)
+    # plt.title('Epsilon-greedy Novel-state Exploration (ε-NS)')
+    # plt.xlabel('Position')
+    # plt.ylabel('Velocity')
+    # plt.savefig(dir + f'log100_norm_{checkpoint_name}.png', dpi=300)
+    # plt.close()
 
-    # now visualize the distances in a heatmap
-    dir = CHECKPOINT_DIR + 'heatmap/'
-    os.makedirs(dir, exist_ok=True)
-
+    distances = agent.critics[0].quasimetric_model(latent_grid, latent_goal_grid)
     fig, ax = plt.subplots()
     cmap = plt.get_cmap('viridis')
     norm = Normalize(vmin=0, vmax=1)
     sm = ScalarMappable(norm=norm, cmap=cmap)
     np_d = distances.detach().numpy()
+    np_d = np.emath.logn(100, np_d + 1)
     colors = sm.to_rgba(np_d)
     ax.scatter(grid[:,0], grid[:,1], c=colors)
     plt.colorbar(sm)
-    n = int(checkpoint.split('_')[1][3:])
-    plt.title(f'Checkpoint {n}')
+    plt.title('Random Baseline (R):')
     plt.xlabel('Position')
     plt.ylabel('Velocity')
-    plt.savefig(dir + f'{n}_norm.png')
+    plt.savefig(dir + f'log100_quasimetric_{checkpoint_name}.png', dpi=300)
     plt.close()
 
-    # correct way of calculating the quasimetric distance with the model
-    distances = agent.critics[0].quasimetric_model(latent_grid, latent_goal_grid)
+# # now generate a gif
+# import imageio
 
-    # now visualize the log distances in a heatmap
-    fig, ax = plt.subplots()
-    cmap = plt.get_cmap('viridis')
-    norm = Normalize(vmin=0, vmax=1)
-    sm = ScalarMappable(norm=norm, cmap=cmap)
-    np_d = np.log(distances.detach().numpy())
-    colors = sm.to_rgba(np_d)
-    ax.scatter(grid[:,0], grid[:,1], c=colors)
-    plt.colorbar(sm)
-    n = int(checkpoint.split('_')[1][3:])
-    plt.title(f'Checkpoint {n}')
-    plt.xlabel('Position')
-    plt.ylabel('Velocity')
-    plt.savefig(dir + f'{n}_quasimetric.png')
-    plt.close()
+# images = []
+# images_log = []
+# n = 1
+# for checkpoint in checkpoints:
+#     # n = int(checkpoint.split('_')[1][3:])
+#     n += 1
+#     images.append(imageio.imread(CHECKPOINT_DIR + f'/heatmap/{n}_norm.png'))
+#     images_log.append(imageio.imread(CHECKPOINT_DIR + f'/heatmap/{n}_quasimetric.png'))
 
-# now generate a gif
-import imageio
-
-images = []
-images_log = []
-for checkpoint in checkpoints:
-    n = int(checkpoint.split('_')[1][3:])
-    images.append(imageio.imread(CHECKPOINT_DIR + f'/heatmap/{n}_norm.png'))
-    images_log.append(imageio.imread(CHECKPOINT_DIR + f'/heatmap/{n}_quasimetric.png'))
-
-imageio.mimsave(CHECKPOINT_DIR + '/heatmap_norm.gif', images, duration=0.5)
-imageio.mimsave(CHECKPOINT_DIR + '/heatmap_quasimetric.gif', images_log, duration=0.5)
+# imageio.mimsave('heatmap_norm.gif', images, duration=0.5)
+# imageio.mimsave('heatmap_quasimetric.gif', images_log, duration=0.5)
