@@ -7,5 +7,5 @@ from .online import register_online_env
 
 __all__ = [
     'BatchData', 'EpisodeData', 'MultiEpisodeData', 'Dataset', 'register_offline_env',
-    'EnvSpec', 'online', 'register_online_env',
+    'EnvSpec', 'online', 'register_online_env', 
 ]

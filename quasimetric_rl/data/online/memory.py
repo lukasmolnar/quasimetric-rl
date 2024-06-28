@@ -13,12 +13,15 @@ import gym.spaces
 from quasimetric_rl.data.env_spec import EnvSpec
 
 from .. import EnvSpec
+from ..utils import TensorCollectionAttrsMixin
 from ..base import (
     EpisodeData, MultiEpisodeData, Dataset, BatchData,
     register_offline_env,
 )
 from .utils import get_empty_episode, get_empty_episodes
+from ...modules import quasimetric_critic
 
+from sklearn.cluster import KMeans, MiniBatchKMeans
 
 #-----------------------------------------------------------------------------#
 #------------------------------ replay buffer --------------------------------#
@@ -87,6 +90,91 @@ def register_online_env(kind: str, spec: str, *,
         kind, spec,
         load_episodes_fn=load_episodes_fn,
         create_env_fn=lambda: FixedLengthEnvWrapper(create_env_fn(), episode_length))
+    
+
+
+class LatentCollection(TensorCollectionAttrsMixin):  # TensorCollectionAttrsMixin has some util methods
+    states: torch.Tensor
+    latent: torch.Tensor
+    device: torch.device
+    k: int
+    n: int
+
+    def __init__(self, downsample_n, novel_k, device: torch.device):
+        super().__init__()
+        self.states = torch.empty((0,)).to(device)
+        self.latent = torch.empty((0,)).to(device)
+        self.device = device
+        self.n = downsample_n
+        self.k = novel_k
+
+    def add_state(self, state: torch.Tensor, latent: torch.Tensor):
+        # TODO: refactor
+        state_dim = state.shape[0]
+        latent_dim = 128
+        self.states = torch.cat((self.states.reshape(-1,state_dim), state.unsqueeze(0).to(self.device)), dim=0)
+        self.latent = torch.cat((self.latent.reshape(-1,latent_dim), latent.unsqueeze(0).to(self.device)), dim=0)
+
+    def add_rollout(self, episode: EpisodeData, critic: quasimetric_critic.QuasimetricCritic):
+        if critic is None:
+            # latent like state with zeros
+            for state in episode.all_observations:
+                latent = torch.zeros(128)
+                self.add_state(state, latent)
+            return
+        for state in episode.all_observations:
+            latent = critic.encoder(state.to(self.device))
+            self.add_state(state, latent)
+
+    def novelty(self, new_latent_state: torch.Tensor, critic: quasimetric_critic.QuasimetricCritic, mode ='latent'):
+        if self.latent.shape[0] < self.k:
+            return 0
+        if mode == 'latent':
+            new_latent_copies = new_latent_state.repeat(self.latent.shape[0], 1)
+            dist = torch.norm(self.latent - new_latent_copies, dim=1)
+            # return dist.topk(self.k, largest=False).values.mean()
+
+            # Calculate nearest k neighbors based on torch.norm, then calculate novelty as the 
+            # average quasimetric distance to those k neighbors
+            nearest_k = self.latent[dist.topk(self.k, largest=False).indices]
+            quasi_dist_k = critic.quasimetric_model(new_latent_copies[:self.k], nearest_k)
+            return quasi_dist_k.mean()
+        elif mode == 'state':
+            new_states_copies = new_latent_state.repeat(self.latent.shape[0], 1)
+            dist = torch.norm(self.states - new_states_copies, dim=1)
+            return dist.topk(self.k, largest=False).values.mean()
+        else:
+            raise NotImplementedError(f"Mode {mode} not implemented")
+    
+    def reduceCollection(self, mode = 'cluster latents'):
+        # downsample the collection to n states
+        if mode == 'downsample':
+            if self.latent.shape[0] > self.n:
+                indices = torch.randperm(self.latent.shape[0])[:self.n]
+                self.states = self.states[indices]
+                self.latent = self.latent[indices]
+        else:
+            # use k-means to reduce the collection
+            # WE ARE NOT USING GPUS HERE :(
+            if mode == 'cluster_latents':
+                kmeans = KMeans(n_clusters=self.n, random_state=0).fit(self.latent.detach().cpu().numpy())
+                # batchkmeans = MiniBatchKMeans(n_clusters=self.n, random_state=0, batch_size=1024).fit(self.latent.cpu().numpy())
+                distances = kmeans.transform(self.latent.detach().cpu().numpy())
+                closest_samples = np.argmin(distances, axis=0)
+                self.states = self.states[closest_samples]
+                self.latent = self.latent[closest_samples]
+            elif mode == 'cluster_states':
+                kmeans = KMeans(n_clusters=self.n, random_state=0).fit(self.states.detach().cpu().numpy())
+                self.states = torch.tensor(kmeans.cluster_centers_).to(self.device)
+                self.latent = torch.empty((self.n, self.latent.shape[1])).to(self.device)
+            else:
+                raise NotImplementedError(f"Mode {mode} not implemented")
+
+
+    
+    def update(self, critic: quasimetric_critic.QuasimetricCritic):
+        for i in range(self.states.shape[0]):
+            self.latent[i] = critic.encoder(self.states[i].to(self.device))
 
 
 class ReplayBuffer(Dataset):
@@ -231,7 +319,8 @@ class ReplayBuffer(Dataset):
 
         t = 0
         timeout = False
-        while not timeout:
+        # TODO: Look into how to handle timeout & terminal for new envs
+        while not timeout and t < self.episode_length:
             action = actor(
                 observation,
                 goal,
@@ -244,7 +333,27 @@ class ReplayBuffer(Dataset):
             goal: torch.Tensor = torch.as_tensor(observation_dict['desired_goal'])
             agoal: torch.Tensor = torch.as_tensor(observation_dict['achieved_goal'])
 
-            is_success: bool = info['is_success']
+            # TODO[lm]: Look into how we should define is_success for new envs
+            if 'is_success' in info:
+                is_success = info['is_success']
+            else:
+                # dist_to_goal = torch.norm(agoal - goal)
+                # is_success = dist_to_goal < 0.01
+
+                if 'Pendulum' in env.spec.id:
+                    # pendulum goal pos is 2D
+                    dist_to_goal_pos = torch.norm(agoal[:2] - goal[:2])
+                    is_success = dist_to_goal_pos < 0.01
+                elif 'MountainCar' in env.spec.id:
+                    # mountain car goal pos is 1D
+                    rel_dist_to_goal = agoal[:1] - goal[:1]
+                    velocity = agoal[1]
+                    # definition from paper appendix
+                    is_success = rel_dist_to_goal >= 0 and rel_dist_to_goal <= 0.1 and velocity >= 0
+                elif 'CartPole' in env.spec.id:
+                    # mountain car goal pos is 2D (last 2 entries)
+                    dist_to_goal_pos = torch.norm(agoal[2:] - goal[2:])
+                    is_success = dist_to_goal_pos < 0.01
 
             epi.all_observations[t + 1] = observation
             epi.actions[t] = torch.as_tensor(action)
@@ -254,8 +363,9 @@ class ReplayBuffer(Dataset):
             epi.observation_infos['achieved_goals'][t + 1] = agoal
 
             t += 1
+            # TODO: Look into how to handle timeout & terminal for new envs
             timeout = info.get('TimeLimit.truncated', False)
-            assert (timeout or terminal) == (t == self.episode_length)
+            # assert (timeout or terminal) == (t == self.episode_length)
         return epi
 
     def add_rollout(self, episode: EpisodeData):
@@ -314,6 +424,28 @@ class ReplayBuffer(Dataset):
 """.strip('\n'),
         ] + lines[-1:]
         return '\n'.join(lines)
+    
+    def save_to_csv(self, path: str):
+        import pandas as pd
+        valid_episodes = self.num_transitions_realized
+        valid_observations = self.raw_data.all_observations[:valid_episodes]
+        # Flatten the observations across episodes while preserving transition order
+        # Let's assume each observation has components x (position) and v (velocity)
+        # Flatten along the first two dimensions (episodes and transitions within each episode)
+        observations_flat = valid_observations.view(-1, valid_observations.shape[-1])
+        # Convert tensor to numpy array and extract the columns for x and v
+        observations_x = observations_flat[:, 0].cpu().numpy()  # Example index for position
+        observations_v = observations_flat[:, 1].cpu().numpy()  # Example index for velocity
+        
+        # Create a DataFrame with the flattened and valid observations
+        data = {
+            'observations_x': observations_x,
+            'observations_v': observations_v,
+        }
+        df = pd.DataFrame(data)
+        
+        # Save the DataFrame to a CSV file
+        df.to_csv(path, index=False)  # index=False to avoid writing row numbers
 
 
 from . import gcrl  # register

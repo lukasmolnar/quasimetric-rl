@@ -111,7 +111,7 @@ class MLP(nn.Module):
         self.module = torch.jit.script(nn.Sequential(*modules))
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
-        return self.module(input)
+        return self.module(input.to(torch.float32))
 
     # for type hints
     def __call__(self, input: torch.Tensor) -> torch.Tensor:

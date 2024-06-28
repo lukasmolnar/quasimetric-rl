@@ -2,4 +2,10 @@
 
 # default args are already for the online GCRL setting
 
-exec python -m online.main env.kind=gcrl "${@}"
+args=(
+    env.kind=gcrl
+    agent.actor=null
+    output_folder_suffix='03'
+)
+
+exec python -m online.main "${args[@]}" "${@}"

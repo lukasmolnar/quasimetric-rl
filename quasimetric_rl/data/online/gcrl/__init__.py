@@ -16,10 +16,11 @@ class GoalCondEnvWrapper(gym.ObservationWrapper):
     """
 
     episode_length: int
+    fixed_goal: Optional[np.ndarray]
     is_image_based: bool
     create_kwargs: Mapping[str, Any]
 
-    def __init__(self, env: gym.Env, episode_length: int, is_image_based: bool):
+    def __init__(self, env: gym.Env, episode_length: int, fixed_goal: Optional[np.ndarray], is_image_based: bool):
         super().__init__(gym.wrappers.TimeLimit(env.unwrapped, episode_length))
         if is_image_based:
             single_ospace = gym.spaces.Box(
@@ -31,21 +32,32 @@ class GoalCondEnvWrapper(gym.ObservationWrapper):
             assert isinstance(env.observation_space, gym.spaces.Box)
             ospace: gym.spaces.Box = env.observation_space
             assert len(ospace.shape) == 1
-            single_ospace = gym.spaces.Box(
-                low=np.split(ospace.low, 2)[0],
-                high=np.split(ospace.high, 2)[0],
-                dtype=ospace.dtype,
-            )
+            if fixed_goal is None:
+                # Fetch environments have a concatenated observation space
+                single_ospace = gym.spaces.Box(
+                    low=np.split(ospace.low, 2)[0],
+                    high=np.split(ospace.high, 2)[0],
+                    dtype=ospace.dtype,
+                )
+            else:
+                single_ospace = ospace
         self.observation_space = gym.spaces.Dict(dict(
             observation=single_ospace,
             achieved_goal=single_ospace,
             desired_goal=single_ospace,
         ))
         self.episode_length = episode_length
+        self.fixed_goal = fixed_goal
         self.is_image_based = is_image_based
 
     def observation(self, observation):
-        o, g = np.split(observation, 2)
+        if self.fixed_goal is None:
+            # Fetch environments have a concatenated observation space
+            o, g = np.split(observation, 2)
+        else:
+            o = observation
+            g = self.fixed_goal
+            
         if self.is_image_based:
             o = o.reshape(64, 64, 3)
             g = g.reshape(64, 64, 3)
@@ -61,9 +73,18 @@ class GoalCondEnvWrapper(gym.ObservationWrapper):
 def create_env_from_spec(name: str):
     from . import fetch_envs  # lazy init mujoco/mujoco_py, which has a range of installation issues
 
-    env: gym.Env = getattr(fetch_envs, name + 'Env')()
     is_image_based = name.endswith('Image')
-    return GoalCondEnvWrapper(env, episode_length=50, is_image_based=is_image_based)
+
+    if name in fixed_goals:
+        fixed_goal = fixed_goals[name]
+        env = gym.make(name)
+    else:
+        # Fetch environments do not have fixed goals
+        fixed_goal = None
+        env: gym.Env = getattr(fetch_envs, name + 'Env')()
+    
+    return GoalCondEnvWrapper(env, episode_length=1000, fixed_goal=fixed_goal, 
+                              is_image_based=is_image_based)
 
 
 valid_names = (
@@ -72,12 +93,22 @@ valid_names = (
     'FetchPush',
     'FetchPushImage',
     'FetchSlide',
+    'MountainCar-v0',
+    'MountainCarContinuous-v0',
+    'Pendulum-v0',
+    'CartPole-v1'
 )
 
+fixed_goals = {
+    'MountainCar-v0': np.array([0.5, 0.0]), # Discrete mountain car (different goal to continuous)
+    'MountainCarContinuous-v0': np.array([0.45, 0.0]),
+    'Pendulum-v0': np.array([1.0, 0.0, 0.0]),
+    'CartPole-v1': np.array([0.0, 0.0, 0.0, 0.0])
+}
 
 for name in valid_names:
     register_online_env(
         'gcrl', name,
         create_env_fn=functools.partial(create_env_from_spec, name),
-        episode_length=50,
+        episode_length=1000,
     )

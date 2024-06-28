@@ -25,6 +25,8 @@ from quasimetric_rl.base_conf import BaseConf
 
 from .trainer import Trainer, InteractionConf
 
+import pandas as pd
+
 
 @utils.singleton
 @attrs.define(kw_only=True)
@@ -36,9 +38,10 @@ class Conf(BaseConf):
     batch_size: int = attrs.field(default=256, validator=attrs.validators.gt(0))
     interaction: InteractionConf = InteractionConf()
 
-    log_steps: int = attrs.field(default=250, validator=attrs.validators.gt(0))
-    eval_steps: int = attrs.field(default=2000, validator=attrs.validators.gt(0))
-    save_steps: int = attrs.field(default=50000, validator=attrs.validators.gt(0))
+    log_steps: int = attrs.field(default=50_000, validator=attrs.validators.gt(0))
+    eval_steps: int = attrs.field(default=10_000, validator=attrs.validators.gt(0))
+    save_steps: int = attrs.field(default=50_000, validator=attrs.validators.gt(0))
+    novel_steps: int = attrs.field(default=10_000, validator=attrs.validators.gt(0))
 
 
 
@@ -137,6 +140,7 @@ def train(dict_cfg: DictConfig):
             log=cfg.log_steps,
             save=cfg.save_steps,
             eval=cfg.eval_steps,
+            novel=cfg.novel_steps,
         ),
     )
 
@@ -168,6 +172,11 @@ def train(dict_cfg: DictConfig):
         if step_counter.alerts.save:
             save(env_steps, optim_steps)
 
+        if step_counter.alerts.novel:
+            torch.save(trainer.latent_collection.states, os.path.join(cfg.output_dir, 'visited_states' + str(env_steps) + '.pth'))
+            # torch.save(trainer.latent_collection.latent, os.path.join(cfg.output_dir, 'visited_latents' + str(env_steps) + '.pth'))
+            trainer.novelty_update()
+
         if step_counter.alerts.log:
             log_tensorboard(env_steps, data_info, 'data/')
             log_tensorboard(env_steps, train_info, 'train_')
@@ -178,6 +187,11 @@ def train(dict_cfg: DictConfig):
     save(trainer.total_env_steps, optim_steps, suffix='final')
     open(cfg.completion_file, 'a').close()
 
+    # save all visited states
+    visited_states = trainer.latent_collection.states
+    torch.save(visited_states, os.path.join(cfg.output_dir, 'visited_states_final.pth'))
+    # save_to_csv
+    trainer.replay.save_to_csv(os.path.join(cfg.output_dir, 'replay.csv'))
 
 if __name__ == '__main__':
     if 'MUJOCO_GL' not in os.environ:
